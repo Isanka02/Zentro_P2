@@ -5,6 +5,7 @@ import Layout from "./components/layout/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import Home from "./pages/Home";
 
 const queryClient = new QueryClient();
 
@@ -18,8 +19,8 @@ const AppRoutes = () => {
         <Route path="/register" element={<Register />} />
 
         {/* Placeholder home route until Day 5-6 build the real one */}
-        <Route path="/" element={<div className="p-8">Home page coming soon</div>} />
-
+        <Route path="/" element={<Home />} />
+        
         {/* Example of protected routes for later days */}
         <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
           <Route path="/admin" element={<div className="p-8">Admin dashboard coming soon</div>} />
