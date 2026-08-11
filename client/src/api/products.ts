@@ -39,4 +39,9 @@ export interface ProductQueryParams {
 export const fetchProducts = async (params: ProductQueryParams): Promise<ProductsResponse> => {
   const res = await api.get<ProductsResponse>("/products", { params });
   return res.data;
+}
+
+export const fetchProductById = async (id: string): Promise<Product> => {
+  const res = await api.get<{ product: Product }>(`/products/${id}`);
+  return res.data.product;
 };

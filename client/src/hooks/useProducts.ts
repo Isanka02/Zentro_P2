@@ -6,6 +6,6 @@ export const useProducts = (params: ProductQueryParams) => {
   return useQuery({
     queryKey: ["products", params],
     queryFn: () => fetchProducts(params),
-    placeholderData: (prev) => prev, // keeps old data visible while refetching (avoids grid flashing empty)
+    placeholderData: (prev) => prev,
   });
 };
