@@ -2,23 +2,48 @@ import { Link } from "react-router-dom";
 import { Heart, Star } from "lucide-react";
 import type { Product } from "../../api/products";
 import { formatPrice } from "../../lib/formatPrice";
+import { useCartStore } from "../../store/cartStore";
+import { useWishlistStore } from "../../store/wishlistStore";
 
 interface ProductCardProps {
   product: Product;
 }
 
 const ProductCard = ({ product }: ProductCardProps) => {
+  const addItem = useCartStore((s) => s.addItem);
+  const toggleWishlist = useWishlistStore((s) => s.toggleWishlist);
+  const isWishlisted = useWishlistStore((s) => s.isWishlisted(product._id));
+
   const hasDiscount = product.discountPrice && product.discountPrice < product.price;
   const isNew = Date.now() - new Date(product.createdAt).getTime() < 14 * 24 * 60 * 60 * 1000;
   const isTopRated = product.rating >= 4.5 && product.numReviews > 0;
 
+  const handleAddToCart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    addItem({
+      productId: product._id,
+      name: product.name,
+      image: product.images[0] || "",
+      price: hasDiscount ? product.discountPrice! : product.price,
+      stock: product.stock,
+    });
+  };
+
+  const handleWishlistToggle = (e: React.MouseEvent) => {
+    e.preventDefault();
+    toggleWishlist(product._id);
+  };
+
   return (
     <div className="group relative bg-white rounded-lg border border-gray-200 overflow-hidden hover:shadow-md transition-shadow">
       <button
-        className="absolute top-2 right-2 z-10 bg-white rounded-full p-1.5 shadow-sm hover:text-red-500"
+        onClick={handleWishlistToggle}
+        className={`absolute top-2 right-2 z-10 bg-white rounded-full p-1.5 shadow-sm ${
+          isWishlisted ? "text-red-500" : "hover:text-red-500"
+        }`}
         aria-label="Toggle wishlist"
       >
-        <Heart size={16} />
+        <Heart size={16} className={isWishlisted ? "fill-red-500" : ""} />
       </button>
 
       <div className="absolute top-2 left-2 z-10 flex flex-col gap-1">
@@ -82,6 +107,7 @@ const ProductCard = ({ product }: ProductCardProps) => {
         </p>
 
         <button
+          onClick={handleAddToCart}
           disabled={product.stock === 0}
           className="w-full mt-2 bg-blue-600 text-white text-sm py-1.5 rounded-md hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
         >

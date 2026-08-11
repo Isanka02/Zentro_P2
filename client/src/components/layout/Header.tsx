@@ -3,8 +3,13 @@ import { Link, useNavigate } from "react-router-dom";
 import { Search, Heart, ShoppingCart, MessageCircle, User, Menu, X } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { logoutUser } from "../../api/auth";
+import { useWishlistStore } from "../../store/wishlistStore";
+import { useCartStore } from "../../store/cartStore";
+
 
 const Header = () => {
+  const cartCount = useCartStore((s) => s.totalItems());
+  const wishlistCount = useWishlistStore((s) => s.productIds.length);
   const navigate = useNavigate();
   const { user, clearUser } = useAuthStore();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -43,17 +48,22 @@ const Header = () => {
         </form>
 
         <div className="hidden md:flex items-center gap-5">
-          <Link to="/wishlist" className="text-gray-600 hover:text-blue-600">
-            <Heart size={20} />
+  <Link to="/wishlist" className="relative text-gray-600 hover:text-blue-600">
+    <Heart size={20} />
+    {wishlistCount > 0 && (
+      <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-semibold rounded-full w-4 h-4 flex items-center justify-center">
+        {wishlistCount > 9 ? "9+" : wishlistCount}
+      </span>
+    )}
           </Link>
-          <Link to="/cart" className="text-gray-600 hover:text-blue-600">
+          <Link to="/cart" className="relative text-gray-600 hover:text-blue-600">
             <ShoppingCart size={20} />
+            {cartCount > 0 && (
+              <span className="absolute -top-2 -right-2 bg-blue-600 text-white text-[10px] font-semibold rounded-full w-4 h-4 flex items-center justify-center">
+                {cartCount > 9 ? "9+" : cartCount}
+              </span>
+            )}
           </Link>
-          {user && (
-            <Link to="/messages" className="text-gray-600 hover:text-blue-600">
-              <MessageCircle size={20} />
-            </Link>
-          )}
           {user ? (
             <div className="flex items-center gap-3">
               <Link to="/profile" className="text-gray-600 hover:text-blue-600">

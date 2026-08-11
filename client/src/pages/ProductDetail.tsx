@@ -3,6 +3,8 @@ import { useParams, Link } from "react-router-dom";
 import { Heart } from "lucide-react";
 import { useProduct } from "../hooks/useProduct";
 import { formatPrice } from "../lib/formatPrice";
+import { useCartStore } from "../store/cartStore";
+import { useWishlistStore } from "../store/wishlistStore";
 import Breadcrumb from "../components/product/Breadcrumb";
 import ImageGallery from "../components/product/ImageGallery";
 import QuantitySelector from "../components/product/QuantitySelector";
@@ -15,6 +17,11 @@ const ProductDetail = () => {
   const { id } = useParams<{ id: string }>();
   const { data: product, isLoading, isError } = useProduct(id);
   const [quantity, setQuantity] = useState(1);
+  const [justAdded, setJustAdded] = useState(false);
+
+  const addItem = useCartStore((s) => s.addItem);
+  const toggleWishlist = useWishlistStore((s) => s.toggleWishlist);
+  const isWishlisted = useWishlistStore((s) => (product ? s.isWishlisted(product._id) : false));
 
   if (isLoading) {
     return (
@@ -47,6 +54,21 @@ const ProductDetail = () => {
 
   const hasDiscount = product.discountPrice && product.discountPrice < product.price;
   const displayPrice = hasDiscount ? product.discountPrice! : product.price;
+
+  const handleAddToCart = () => {
+    addItem(
+      {
+        productId: product._id,
+        name: product.name,
+        image: product.images[0] || "",
+        price: displayPrice,
+        stock: product.stock,
+      },
+      quantity
+    );
+    setJustAdded(true);
+    setTimeout(() => setJustAdded(false), 2000);
+  };
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6">
@@ -88,22 +110,31 @@ const ProductDetail = () => {
 
           <div className="flex gap-3 mt-6">
             <button
+              onClick={handleAddToCart}
               disabled={product.stock === 0}
               className="flex-1 bg-blue-600 text-white py-3 rounded-md font-medium hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
-              Add to cart
+              {justAdded ? "Added!" : "Add to cart"}
             </button>
-            <button
-              disabled={product.stock === 0}
-              className="flex-1 border border-blue-600 text-blue-600 py-3 rounded-md font-medium hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            <Link
+              to="/cart"
+              onClick={handleAddToCart}
+              className={`flex-1 flex items-center justify-center border border-blue-600 text-blue-600 py-3 rounded-md font-medium hover:bg-blue-50 transition-colors ${
+                product.stock === 0 ? "pointer-events-none opacity-40" : ""
+              }`}
             >
               Buy now
-            </button>
+            </Link>
             <button
+              onClick={() => toggleWishlist(product._id)}
               aria-label="Toggle wishlist"
-              className="p-3 border border-gray-300 rounded-md text-gray-500 hover:text-red-500 hover:border-red-300"
+              className={`p-3 border rounded-md ${
+                isWishlisted
+                  ? "border-red-300 text-red-500"
+                  : "border-gray-300 text-gray-500 hover:text-red-500 hover:border-red-300"
+              }`}
             >
-              <Heart size={20} />
+              <Heart size={20} className={isWishlisted ? "fill-red-500" : ""} />
             </button>
           </div>
 
