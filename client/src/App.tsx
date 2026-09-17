@@ -8,7 +8,8 @@ import Register from "./pages/Register";
 import Home from "./pages/Home";
 import ProductDetail from "./pages/ProductDetail";
 import Cart from "./pages/Cart";
-
+import Checkout from "./pages/Checkout";
+import OrderConfirmation from "./pages/OrderConfirmation";
 
 const queryClient = new QueryClient();
 
@@ -22,6 +23,10 @@ const AppRoutes = () => {
         <Route path="/register" element={<Register />} />
         <Route path="/products/:id" element={<ProductDetail />} />
         <Route path="/cart" element={<Cart />} />
+        <Route path="/checkout" element={<Checkout />} />
+        <Route path="/order-confirmation" element={<OrderConfirmation />} />
+
+
 
         {/* Placeholder home route until Day 5-6 build the real one */}
         <Route path="/" element={<Home />} />
