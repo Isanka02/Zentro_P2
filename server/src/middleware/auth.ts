@@ -38,6 +38,22 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
   }
 };
 
+export const optionalProtect = async (req: Request, _res: Response, next: NextFunction) => {
+  try {
+    const token = req.cookies?.accessToken;
+    if (token) {
+      const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET as string) as DecodedToken;
+      const user = await User.findById(decoded.id);
+      if (user) {
+        req.user = user;
+      }
+    }
+  } catch (err) {
+    // Ignore invalid/expired tokens for optional authentication
+  }
+  next();
+};
+
 export const adminOnly = (req: Request, res: Response, next: NextFunction) => {
   if (req.user?.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });

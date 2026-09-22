@@ -1,6 +1,6 @@
-import { useState, FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Search, Heart, ShoppingCart, MessageCircle, User, Menu, X } from "lucide-react";
+import { Search, Heart, ShoppingCart, User, Menu, X, Package, Truck } from "lucide-react";
 import { useAuthStore } from "../../store/authStore";
 import { logoutUser } from "../../api/auth";
 import { useWishlistStore } from "../../store/wishlistStore";
@@ -48,7 +48,10 @@ const Header = () => {
         </form>
 
         <div className="hidden md:flex items-center gap-5">
-  <Link to="/wishlist" className="relative text-gray-600 hover:text-blue-600">
+          <Link to="/track" className="text-gray-600 hover:text-blue-600" title="Track Order">
+            <Truck size={20} />
+          </Link>
+          <Link to="/wishlist" className="relative text-gray-600 hover:text-blue-600">
     <Heart size={20} />
     {wishlistCount > 0 && (
       <span className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-semibold rounded-full w-4 h-4 flex items-center justify-center">
@@ -66,8 +69,15 @@ const Header = () => {
           </Link>
           {user ? (
             <div className="flex items-center gap-3">
-              <Link to="/profile" className="text-gray-600 hover:text-blue-600">
-                <User size={20} />
+              <Link to="/orders" className="text-gray-600 hover:text-blue-600" title="My Orders">
+                <Package size={20} />
+              </Link>
+              <Link to="/profile" className="text-gray-600 hover:text-blue-600 flex items-center" title="Profile">
+                {user.avatar ? (
+                  <img src={user.avatar} alt={user.name} className="w-6 h-6 rounded-full object-cover border border-gray-300" />
+                ) : (
+                  <User size={20} />
+                )}
               </Link>
               <button onClick={handleLogout} className="text-sm text-gray-600 hover:text-blue-600">
                 Logout
@@ -102,11 +112,12 @@ const Header = () => {
               className="w-full rounded-md border border-gray-300 pl-10 pr-4 py-2 text-sm"
             />
           </form>
+          <Link to="/track" className="block text-gray-700" onClick={() => setMobileOpen(false)}>Track Order</Link>
           <Link to="/wishlist" className="block text-gray-700" onClick={() => setMobileOpen(false)}>Wishlist</Link>
           <Link to="/cart" className="block text-gray-700" onClick={() => setMobileOpen(false)}>Cart</Link>
           {user ? (
             <>
-              <Link to="/messages" className="block text-gray-700" onClick={() => setMobileOpen(false)}>Messages</Link>
+              <Link to="/orders" className="block text-gray-700" onClick={() => setMobileOpen(false)}>My Orders</Link>
               <Link to="/profile" className="block text-gray-700" onClick={() => setMobileOpen(false)}>Profile</Link>
               <button onClick={handleLogout} className="block text-left w-full text-gray-700">
                 Logout

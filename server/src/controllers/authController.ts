@@ -37,7 +37,7 @@ export const register = async (req: Request, res: Response) => {
     setTokenCookies(res, accessToken, refreshToken);
 
     res.status(201).json({
-      user: { id: user._id, name: user.name, email: user.email, role: user.role },
+      user: { id: user._id, name: user.name, email: user.email, phone: user.phone, address: user.address, avatar: user.avatar, role: user.role },
     });
   } catch (err) {
     res.status(500).json({ message: "Registration failed", error: (err as Error).message });
@@ -67,7 +67,7 @@ export const login = async (req: Request, res: Response) => {
     setTokenCookies(res, accessToken, refreshToken);
 
     res.status(200).json({
-      user: { id: user._id, name: user.name, email: user.email, role: user.role },
+      user: { id: user._id, name: user.name, email: user.email, phone: user.phone, address: user.address, avatar: user.avatar, role: user.role },
     });
   } catch (err) {
     res.status(500).json({ message: "Login failed", error: (err as Error).message });
@@ -109,6 +109,54 @@ export const refresh = async (req: Request, res: Response) => {
 
 export const getMe = async (req: Request, res: Response) => {
   res.status(200).json({
-    user: { id: req.user!._id, name: req.user!.name, email: req.user!.email, role: req.user!.role },
+    user: {
+      id: req.user!._id,
+      name: req.user!.name,
+      email: req.user!.email,
+      phone: req.user!.phone,
+      address: req.user!.address,
+      avatar: req.user!.avatar,
+      role: req.user!.role,
+    },
   });
+};
+
+export const updateProfile = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    const { name, phone, address, avatar } = req.body;
+
+    if (name !== undefined) {
+      if (typeof name !== "string" || !name.trim()) {
+        return res.status(400).json({ message: "Name cannot be empty" });
+      }
+      req.user.name = name.trim();
+    }
+
+    if (phone !== undefined) req.user.phone = phone.trim();
+    if (address !== undefined) req.user.address = address.trim();
+    if (avatar !== undefined) req.user.avatar = avatar.trim();
+
+    await req.user.save();
+
+    return res.json({
+      message: "Profile updated successfully",
+      user: {
+        id: req.user._id,
+        name: req.user.name,
+        email: req.user.email,
+        phone: req.user.phone,
+        address: req.user.address,
+        avatar: req.user.avatar,
+        role: req.user.role,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({
+      message: err instanceof Error ? err.message : "Failed to update profile",
+    });
+  }
 };

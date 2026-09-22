@@ -12,6 +12,7 @@ import ShareButtons from "../components/product/ShareButtons";
 import TrustInfo from "../components/product/TrustInfo";
 import RelatedProducts from "../components/product/RelatedProducts";
 import RatingSummary from "../components/product/RatingSummary";
+import ReviewSection from "../components/product/ReviewSection";
 
 const ProductDetail = () => {
   const { id } = useParams<{ id: string }>();
@@ -142,6 +143,12 @@ const ProductDetail = () => {
           <TrustInfo />
         </div>
       </div>
+
+      <ReviewSection
+        productId={product._id}
+        rating={product.rating}
+        numReviews={product.numReviews}
+      />
 
       <RelatedProducts categoryId={product.category._id} excludeProductId={product._id} />
     </div>

@@ -263,3 +263,128 @@ export const createOrder = async (req: Request, res: Response) => {
     await session.endSession();
   }
 };
+
+export const getMyOrders = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    const orders = await Order.find({ user: req.user._id }).sort({ createdAt: -1 });
+
+    return res.json({ orders });
+  } catch (err) {
+    return res.status(500).json({
+      message: err instanceof Error ? err.message : "Failed to fetch orders",
+    });
+  }
+};
+
+export const getOrderById = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+
+    const id = req.params.id as string;
+
+    if (!id || !Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid order ID" });
+    }
+
+    const order = await Order.findById(id);
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    const isOwner = order.user?.toString() === req.user._id.toString();
+    const isAdmin = req.user.role === "admin";
+
+    if (!isOwner && !isAdmin) {
+      return res.status(403).json({ message: "Not authorized to access this order" });
+    }
+
+    return res.json({ order });
+  } catch (err) {
+    return res.status(500).json({
+      message: err instanceof Error ? err.message : "Failed to fetch order details",
+    });
+  }
+};
+
+export const trackOrder = async (req: Request, res: Response) => {
+  try {
+    const orderNumber = (req.params.orderNumber as string)?.trim();
+
+    if (!orderNumber) {
+      return res.status(400).json({ message: "Order number is required" });
+    }
+
+    const order = await Order.findOne({
+      orderNumber: { $regex: new RegExp(`^${orderNumber}$`, "i") },
+    });
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    return res.json({
+      order: {
+        _id: order._id,
+        orderNumber: order.orderNumber,
+        status: order.status,
+        trackingNumber: order.trackingNumber,
+        carrier: order.carrier,
+        estimatedDelivery: order.estimatedDelivery,
+        shippingAddress: order.shippingAddress,
+        items: order.items,
+        total: order.total,
+        subtotal: order.subtotal,
+        shippingCost: order.shippingCost,
+        discountAmount: order.discountAmount,
+        paymentMethod: order.paymentMethod,
+        createdAt: order.createdAt,
+        updatedAt: order.updatedAt,
+      },
+    });
+  } catch (err) {
+    return res.status(500).json({
+      message: err instanceof Error ? err.message : "Failed to track order",
+    });
+  }
+};
+
+export const updateOrderStatus = async (req: Request, res: Response) => {
+  try {
+    const id = req.params.id as string;
+    const { status, trackingNumber, carrier, estimatedDelivery } = req.body;
+
+    if (!id || !Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid order ID" });
+    }
+
+    const validStatuses = ["pending", "confirmed", "shipped", "delivered", "cancelled"];
+    if (status && !validStatuses.includes(status)) {
+      return res.status(400).json({ message: "Invalid status value" });
+    }
+
+    const order = await Order.findById(id);
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    if (status) order.status = status;
+    if (trackingNumber !== undefined) order.trackingNumber = trackingNumber;
+    if (carrier !== undefined) order.carrier = carrier;
+    if (estimatedDelivery !== undefined) order.estimatedDelivery = estimatedDelivery ? new Date(estimatedDelivery) : undefined;
+
+    await order.save();
+
+    return res.json({ message: "Order status updated successfully", order });
+  } catch (err) {
+    return res.status(500).json({
+      message: err instanceof Error ? err.message : "Failed to update order status",
+    });
+  }
+};

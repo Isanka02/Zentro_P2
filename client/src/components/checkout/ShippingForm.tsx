@@ -19,18 +19,13 @@ const ShippingForm = ({
   const [errors, setErrors] = useState<FormErrors>({});
 
   const handleChange = (field: keyof ShippingInfo, value: string) => {
-  setForm((prev) => {
-    const next = { ...prev, [field]: value };
-
+    const next = { ...form, [field]: value };
     if (field === "province") {
       next.district = "";
     }
-
+    setForm(next);
     onChange?.(next);
-
-    return next;
-  });
-};
+  };
 
   const validate = (): boolean => {
     const newErrors: FormErrors = {};
