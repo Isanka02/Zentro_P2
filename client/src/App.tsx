@@ -17,7 +17,7 @@ import OrderDetail from "./pages/OrderDetail";
 import OrderTracking from "./pages/OrderTracking";
 import Wishlist from "./pages/Wishlist";
 import Profile from "./pages/Profile";
-
+import AdminUsers from "./pages/admin/AdminUsers";
 import AdminLayout from "./components/admin/AdminLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 
@@ -54,6 +54,7 @@ const AppRoutes = () => {
       <Route element={<ProtectedRoute allowedRoles={["admin"]} />}>
         <Route path="/admin" element={<AdminLayout />}>
           <Route index element={<AdminDashboard />} />
+          <Route path="/admin/users" element={<AdminUsers />} />
         </Route>
       </Route>
     </Routes>
