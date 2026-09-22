@@ -7,13 +7,28 @@ import {
   deleteProduct,
 } from "../controllers/productController";
 import { protect, adminOnly } from "../middleware/auth";
+import upload from "../middleware/upload";
 
 const router = Router();
 
 router.get("/", getProducts);
 router.get("/:id", getProductById);
-router.post("/", protect, adminOnly, createProduct);
-router.put("/:id", protect, adminOnly, updateProduct);
+router.post(
+  "/",
+  protect,
+  adminOnly,
+  upload.array("images", 5),
+  createProduct
+);
+
+router.put(
+  "/:id",
+  protect,
+  adminOnly,
+  upload.array("images", 5),
+  updateProduct
+);
 router.delete("/:id", protect, adminOnly, deleteProduct);
+
 
 export default router;

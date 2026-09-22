@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import Product from "../models/Product";
+import { uploadImageBuffer } from "../config/cloudinary";
 
 export const getProducts = async (req: Request, res: Response) => {
   try {
@@ -85,11 +86,28 @@ export const getProductById = async (req: Request, res: Response) => {
 
 export const createProduct = async (req: Request, res: Response) => {
   try {
-    const { name, description, price, discountPrice, category, images, tags, stock, isFeatured } = req.body;
+    const {
+      name,
+      description,
+      price,
+      discountPrice,
+      category,
+      tags,
+      stock,
+      isFeatured,
+    } = req.body;
 
     if (!name || !description || !price || !category) {
-      return res.status(400).json({ message: "Name, description, price, and category are required" });
+      return res.status(400).json({
+        message: "Name, description, price, and category are required",
+      });
     }
+
+    const files = (req.files as Express.Multer.File[]) || [];
+
+    const imageUrls = await Promise.all(
+      files.map((file) => uploadImageBuffer(file.buffer))
+    );
 
     const product = await Product.create({
       name,
@@ -97,32 +115,127 @@ export const createProduct = async (req: Request, res: Response) => {
       price,
       discountPrice,
       category,
-      images: images || [],
-      tags: tags || [],
+      images: imageUrls,
+      tags: Array.isArray(tags)
+        ? tags
+        : tags
+          ? String(tags)
+              .split(",")
+              .map((tag) => tag.trim())
+              .filter(Boolean)
+          : [],
       stock: stock ?? 0,
-      isFeatured: isFeatured ?? false,
+      isFeatured: isFeatured === "true" || isFeatured === true,
     });
 
-    res.status(201).json({ product });
+    const populatedProduct = await product.populate(
+      "category",
+      "name slug"
+    );
+
+    res.status(201).json({
+      product: populatedProduct,
+    });
   } catch (err) {
-    res.status(500).json({ message: "Failed to create product", error: (err as Error).message });
+    console.error("Create product error:", err);
+
+    res.status(500).json({
+      message: "Failed to create product",
+      error: (err as Error).message,
+    });
   }
 };
 
 export const updateProduct = async (req: Request, res: Response) => {
   try {
-    const product = await Product.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true,
-    });
+    const product = await Product.findById(req.params.id);
 
     if (!product) {
-      return res.status(404).json({ message: "Product not found" });
+      return res.status(404).json({
+        message: "Product not found",
+      });
     }
 
-    res.status(200).json({ product });
+    const {
+      name,
+      description,
+      price,
+      discountPrice,
+      category,
+      tags,
+      stock,
+      isFeatured,
+      existingImages,
+    } = req.body;
+
+    const files = (req.files as Express.Multer.File[]) || [];
+
+    const uploadedImageUrls = await Promise.all(
+      files.map((file) => uploadImageBuffer(file.buffer))
+    );
+
+    let keptImages: string[] = [];
+
+    if (existingImages) {
+      try {
+        keptImages =
+          typeof existingImages === "string"
+            ? JSON.parse(existingImages)
+            : existingImages;
+      } catch {
+        keptImages = [];
+      }
+    }
+
+    product.name = name ?? product.name;
+    product.description = description ?? product.description;
+    product.price = price ?? product.price;
+    product.discountPrice =
+      discountPrice === ""
+        ? undefined
+        : discountPrice ?? product.discountPrice;
+    product.category = category ?? product.category;
+
+    product.tags = Array.isArray(tags)
+      ? tags
+      : tags
+        ? String(tags)
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean)
+        : product.tags;
+
+    product.stock = stock ?? product.stock;
+
+    product.isFeatured =
+      isFeatured === "true"
+        ? true
+        : isFeatured === "false"
+          ? false
+          : isFeatured ?? product.isFeatured;
+
+    product.images = [
+      ...keptImages,
+      ...uploadedImageUrls,
+    ];
+
+    await product.save();
+
+    const populatedProduct = await product.populate(
+      "category",
+      "name slug"
+    );
+
+    res.status(200).json({
+      product: populatedProduct,
+    });
   } catch (err) {
-    res.status(500).json({ message: "Failed to update product", error: (err as Error).message });
+    console.error("Update product error:", err);
+
+    res.status(500).json({
+      message: "Failed to update product",
+      error: (err as Error).message,
+    });
   }
 };
 
