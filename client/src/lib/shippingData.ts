@@ -2,6 +2,18 @@ import type { ShippingOptions } from "../api/shipping";
 
 export type Province = string;
 
+export const DISTRICTS_BY_PROVINCE: Record<string, string[]> = {
+  Western: ["Colombo", "Gampaha", "Kalutara"],
+  Central: ["Kandy", "Matale", "Nuwara Eliya"],
+  Southern: ["Galle", "Matara", "Hambantota"],
+  Northern: ["Jaffna", "Kilinochchi", "Mannar", "Mullaitivu", "Vavuniya"],
+  Eastern: ["Ampara", "Batticaloa", "Trincomalee"],
+  "North Western": ["Kurunegala", "Puttalam"],
+  "North Central": ["Anuradhapura", "Polonnaruwa"],
+  Uva: ["Badulla", "Monaragala"],
+  Sabaragamuwa: ["Kegalle", "Ratnapura"],
+};
+
 export const calculateShipping = (
   province: Province | "",
   subtotal: number,
