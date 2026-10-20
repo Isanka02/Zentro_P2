@@ -6,6 +6,7 @@ export interface IReview extends Document {
   user: Types.ObjectId;
   rating: number;
   comment: string;
+  verifiedPurchase: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -15,12 +16,14 @@ const reviewSchema = new Schema<IReview>(
     product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
     user: { type: Schema.Types.ObjectId, ref: "User", required: true },
     rating: { type: Number, required: true, min: 1, max: 5 },
-    comment: { type: String, required: true, trim: true },
+    comment: { type: String, required: true, trim: true, maxlength: 2000 },
+    verifiedPurchase: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
 
 // enforce one review per user per product
 reviewSchema.index({ product: 1, user: 1 }, { unique: true });
+reviewSchema.index({ product: 1, createdAt: -1 });
 
 export default model<IReview>("Review", reviewSchema);

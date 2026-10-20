@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Search,
   Users,
@@ -13,51 +14,29 @@ import {
   getAdminUsers,
   updateAdminUserRole,
   type AdminUser,
+  type AdminUsersResponse,
 } from "../../api/adminUsers";
 import { useAuthStore } from "../../store/authStore";
+import { getErrorMessage } from "../../lib/errorMessage";
 
 const AdminUsers = () => {
   const { user: currentUser } = useAuthStore();
+  const queryClient = useQueryClient();
 
-  const [users, setUsers] = useState<AdminUser[]>([]);
   const [search, setSearch] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [page, setPage] = useState(1);
-
-  const [total, setTotal] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
-
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const usersQueryKey = ["admin-users", search, page] as const;
+  const usersQuery = useQuery({
+    queryKey: usersQueryKey,
+    queryFn: () => getAdminUsers({ page, limit: 10, search }),
+  });
+  const users = usersQuery.data?.users ?? [];
+  const total = usersQuery.data?.pagination.total ?? 0;
+  const totalPages = usersQuery.data?.pagination.totalPages ?? 1;
+  const loading = usersQuery.isLoading;
 
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-
-  const loadUsers = async () => {
-    try {
-      setLoading(true);
-      setError("");
-
-      const data = await getAdminUsers({
-        page,
-        limit: 10,
-        search,
-      });
-
-      setUsers(data.users);
-      setTotal(data.pagination.total);
-      setTotalPages(data.pagination.totalPages);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load users"
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadUsers();
-  }, [page, search]);
 
   const handleSearch = (event: React.FormEvent) => {
     event.preventDefault();
@@ -89,13 +68,12 @@ const AdminUsers = () => {
         newRole
       );
 
-      setUsers((currentUsers) =>
-        currentUsers.map((item) =>
-          item._id === updatedUser._id
-            ? { ...item, role: updatedUser.role }
-            : item
-        )
-      );
+      queryClient.setQueryData<AdminUsersResponse>(usersQueryKey, (current) => current && ({
+        ...current,
+        users: current.users.map((item) => item._id === updatedUser._id
+          ? { ...item, role: updatedUser.role }
+          : item),
+      }));
     } catch (err) {
       window.alert(
         err instanceof Error
@@ -152,13 +130,13 @@ const AdminUsers = () => {
       </form>
 
       {/* Error */}
-      {error && (
+      {usersQuery.isError && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-3">
           <AlertTriangle
             size={20}
             className="text-red-500 shrink-0"
           />
-          <p className="text-sm text-red-700">{error}</p>
+          <p className="text-sm text-red-700">{getErrorMessage(usersQuery.error, "Failed to load users")}</p>
         </div>
       )}
 

@@ -1,20 +1,26 @@
 import { useEffect, useState } from "react";
+import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
 import { Heart, ShoppingBag, Trash2, ShoppingCart, Star, ArrowLeft } from "lucide-react";
 import { useWishlistStore } from "../store/wishlistStore";
 import { useCartStore } from "../store/cartStore";
 import { fetchProductById, type Product } from "../api/products";
 import { formatPrice } from "../lib/formatPrice";
+import { useAuthStore } from "../store/authStore";
 
 const Wishlist = () => {
   const navigate = useNavigate();
-  const { productIds, toggleWishlist } = useWishlistStore();
+  const isAuthLoading = useAuthStore((s) => s.isLoading);
+  const { productIds, toggleWishlist, isLoading: wishlistLoading, error: wishlistError } = useWishlistStore();
   const addItem = useCartStore((s) => s.addItem);
 
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const isWishlistLoading = isAuthLoading || loading || wishlistLoading;
 
   useEffect(() => {
+    if (isAuthLoading) return;
+    let cancelled = false;
     const loadWishlistProducts = async () => {
       if (productIds.length === 0) {
         setProducts([]);
@@ -24,28 +30,35 @@ const Wishlist = () => {
 
       setLoading(true);
       try {
+        const archivedIds: string[] = [];
         const fetched = await Promise.all(
           productIds.map(async (id) => {
             try {
               return await fetchProductById(id);
-            } catch {
+            } catch (error) {
+              if (axios.isAxiosError(error) && error.response?.status === 404) archivedIds.push(id);
               return null;
             }
           })
         );
+        if (cancelled) return;
         setProducts(fetched.filter((p): p is Product => p !== null));
+        await Promise.all(archivedIds.map((id) => toggleWishlist(id)));
       } catch {
-        setProducts([]);
+        if (!cancelled) setProducts([]);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
     loadWishlistProducts();
-  }, [productIds]);
+    return () => {
+      cancelled = true;
+    };
+  }, [productIds, toggleWishlist, isAuthLoading]);
 
   const handleAddToCart = (product: Product) => {
-    const hasDiscount = product.discountPrice && product.discountPrice < product.price;
+    const hasDiscount = product.discountPrice !== undefined && product.discountPrice < product.price;
     const finalPrice = hasDiscount ? product.discountPrice! : product.price;
 
     addItem(
@@ -83,7 +96,12 @@ const Wishlist = () => {
         </Link>
       </div>
 
-      {loading ? (
+      {wishlistError && (
+        <div role="alert" className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {wishlistError}
+        </div>
+      )}
+      {isWishlistLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 animate-pulse">
           {[1, 2, 3, 4].map((i) => (
             <div key={i} className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
@@ -113,7 +131,7 @@ const Wishlist = () => {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {products.map((product) => {
-            const hasDiscount = product.discountPrice && product.discountPrice < product.price;
+            const hasDiscount = product.discountPrice !== undefined && product.discountPrice < product.price;
             const displayPrice = hasDiscount ? product.discountPrice! : product.price;
 
             return (
@@ -168,14 +186,23 @@ const Wishlist = () => {
 
                 {/* Actions */}
                 <div className="p-4 pt-0">
-                  <button
-                    onClick={() => handleAddToCart(product)}
-                    disabled={product.stock === 0}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl text-xs font-semibold transition disabled:opacity-40 flex items-center justify-center gap-2"
-                  >
-                    <ShoppingCart size={15} />
-                    {product.stock > 0 ? "Add to Cart" : "Out of Stock"}
-                  </button>
+                  {product.variants?.length ? (
+                    <Link
+                      to={`/products/${product._id}`}
+                      className="block w-full rounded-xl bg-blue-600 py-2.5 text-center text-xs font-semibold text-white transition hover:bg-blue-700"
+                    >
+                      {product.stock > 0 ? "Choose options" : "Out of Stock"}
+                    </Link>
+                  ) : (
+                    <button
+                      onClick={() => handleAddToCart(product)}
+                      disabled={product.stock === 0}
+                      className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2.5 rounded-xl text-xs font-semibold transition disabled:opacity-40 flex items-center justify-center gap-2"
+                    >
+                      <ShoppingCart size={15} />
+                      {product.stock > 0 ? "Add to Cart" : "Out of Stock"}
+                    </button>
+                  )}
                 </div>
               </div>
             );

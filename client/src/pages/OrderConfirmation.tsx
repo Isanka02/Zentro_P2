@@ -1,6 +1,8 @@
 import { CheckCircle, Package, ShoppingBag } from "lucide-react";
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import BankTransferInstructions from "../components/payments/BankTransferInstructions";
+import { useAuthStore } from "../store/authStore";
 
 interface OrderInfo {
   id: string;
@@ -11,21 +13,41 @@ interface OrderInfo {
   createdAt: string;
 }
 
+interface OrderConfirmationState {
+  order: OrderInfo;
+  ownerId: string | null;
+}
+
 const OrderConfirmation = () => {
   const navigate = useNavigate();
-  const [order, setOrder] = useState<OrderInfo | null>(null);
-
-  useEffect(() => {
-    const storedOrder = sessionStorage.getItem("zentro_last_order");
-
-    if (storedOrder) {
-      try {
-        setOrder(JSON.parse(storedOrder));
-      } catch {
-        setOrder(null);
-      }
+  const location = useLocation();
+  const user = useAuthStore((state) => state.user);
+  const isAuthLoading = useAuthStore((state) => state.isLoading);
+  const [confirmation] = useState<OrderConfirmationState | null>(() => {
+    const routeState = location.state as Partial<OrderConfirmationState> | null;
+    if (routeState?.order && typeof routeState.order.orderNumber === "string" &&
+        (typeof routeState.ownerId === "string" || routeState.ownerId === null)) {
+      return routeState as OrderConfirmationState;
     }
-  }, []);
+    try {
+      const storedOrder = sessionStorage.getItem("zentro_last_order");
+      if (!storedOrder) return null;
+      const stored = JSON.parse(storedOrder) as Partial<OrderConfirmationState>;
+      if (stored.order && typeof stored.order.orderNumber === "string" &&
+          (typeof stored.ownerId === "string" || stored.ownerId === null)) {
+        return stored as OrderConfirmationState;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  });
+  const isOwner = confirmation?.ownerId === (user?.id ?? null);
+  const order = isAuthLoading || !isOwner ? null : confirmation?.order ?? null;
+
+  if (isAuthLoading) {
+    return <div className="mx-auto max-w-2xl px-4 py-16 text-center text-sm text-gray-500">Checking order details...</div>;
+  }
 
   if (!order) {
     return (
@@ -123,6 +145,10 @@ const OrderConfirmation = () => {
           </div>
         </div>
       </div>
+
+      {order.paymentMethod === "bank_transfer" && (
+        <BankTransferInstructions orderNumber={order.orderNumber} total={order.total} />
+      )}
 
       <div className="flex flex-col sm:flex-row gap-3 mt-6">
         <button

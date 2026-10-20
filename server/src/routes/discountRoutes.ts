@@ -7,10 +7,11 @@ import {
   deleteDiscount,
 } from "../controllers/discountController";
 import { protect, adminOnly } from "../middleware/auth";
+import { discountValidationLimiter } from "../middleware/rateLimiter";
 
 const router = Router();
 
-router.post("/validate", validateDiscount);
+router.post("/validate", discountValidationLimiter, validateDiscount);
 router.get("/", protect, adminOnly, getDiscounts);
 router.post("/", protect, adminOnly, createDiscount);
 router.put("/:id", protect, adminOnly, updateDiscount);

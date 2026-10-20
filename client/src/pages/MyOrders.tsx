@@ -1,7 +1,10 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 import { Package, ChevronRight, ShoppingBag, Clock, CheckCircle2, Truck, AlertCircle, XCircle } from "lucide-react";
 import { getMyOrders, type Order } from "../api/orders";
+import { getErrorMessage } from "../lib/errorMessage";
+import { useAuthStore } from "../store/authStore";
 
 const statusConfig: Record<Order["status"], { label: string; color: string; icon: React.ComponentType<{ size?: number; className?: string }> }> = {
   pending: { label: "Pending", color: "bg-amber-50 text-amber-700 border-amber-200", icon: Clock },
@@ -13,33 +16,20 @@ const statusConfig: Record<Order["status"], { label: string; color: string; icon
 
 const MyOrders = () => {
   const navigate = useNavigate();
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const userId = useAuthStore((state) => state.user?.id);
+  const ordersQuery = useQuery({
+    queryKey: ["my-orders", userId],
+    queryFn: getMyOrders,
+    enabled: Boolean(userId),
+  });
+  const orders = ordersQuery.data ?? [];
   const [filter, setFilter] = useState<string>("all");
-
-  const fetchOrders = async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const data = await getMyOrders();
-      setOrders(data);
-    } catch (err: any) {
-      setError(err?.response?.data?.message || "Failed to load orders. Please try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchOrders();
-  }, []);
 
   const filteredOrders = filter === "all"
     ? orders
     : orders.filter((o) => o.status === filter);
 
-  if (loading) {
+  if (ordersQuery.isLoading) {
     return (
       <div className="max-w-5xl mx-auto px-4 py-12">
         <h1 className="text-2xl font-bold text-gray-900 mb-6">My Orders</h1>
@@ -58,14 +48,14 @@ const MyOrders = () => {
     );
   }
 
-  if (error) {
+  if (ordersQuery.isError) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-16 text-center">
         <AlertCircle size={48} className="mx-auto text-red-500 mb-3" />
         <h2 className="text-lg font-semibold text-gray-900">Failed to Load Orders</h2>
-        <p className="text-sm text-gray-500 mt-1 mb-6">{error}</p>
+        <p className="text-sm text-gray-500 mt-1 mb-6">{getErrorMessage(ordersQuery.error, "Failed to load orders. Please try again.")}</p>
         <button
-          onClick={fetchOrders}
+          onClick={() => void ordersQuery.refetch()}
           className="bg-blue-600 text-white px-5 py-2.5 rounded-md font-medium hover:bg-blue-700 transition"
         >
           Try Again

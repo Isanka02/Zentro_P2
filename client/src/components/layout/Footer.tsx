@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Package, Truck, ShieldCheck } from "lucide-react";
+import { LifeBuoy, Package, Truck, ShieldCheck } from "lucide-react";
 
 const Footer = () => {
   return (
@@ -27,6 +27,11 @@ const Footer = () => {
             <li>
               <Link to="/orders" className="hover:text-blue-400 transition flex items-center gap-1.5">
                 <Package size={14} /> My Orders
+              </Link>
+            </li>
+            <li>
+              <Link to="/support" className="hover:text-blue-400 transition flex items-center gap-1.5">
+                <LifeBuoy size={14} /> Customer Support
               </Link>
             </li>
             <li>

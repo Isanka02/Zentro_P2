@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { registerUser } from "../api/auth";
-import { useAuthStore } from "../store/authStore";
+import { getAuthRevision, useAuthStore } from "../store/authStore";
+import { getErrorMessage } from "../lib/errorMessage";
 
 const Register = () => {
   const navigate = useNavigate();
@@ -26,8 +27,8 @@ const Register = () => {
     e.preventDefault();
     setError("");
 
-    if (form.password.length < 6) {
-      setError("Password must be at least 6 characters");
+    if (form.password.length < 12) {
+      setError("Password must be at least 12 characters");
       return;
     }
     if (form.password !== form.confirmPassword) {
@@ -36,6 +37,7 @@ const Register = () => {
     }
 
     setIsSubmitting(true);
+    const authRevision = getAuthRevision();
     try {
       const user = await registerUser({
         name: form.name,
@@ -44,10 +46,11 @@ const Register = () => {
         phone: form.phone,
         address: form.address,
       });
+      if (authRevision !== getAuthRevision()) return;
       setUser(user);
       navigate("/");
-    } catch (err: any) {
-      setError(err?.response?.data?.message || "Registration failed. Please try again.");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Registration failed. Please try again."));
     } finally {
       setIsSubmitting(false);
     }
@@ -71,6 +74,7 @@ const Register = () => {
             <input
               name="name"
               required
+              maxLength={100}
               value={form.name}
               onChange={handleChange}
               className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -83,6 +87,7 @@ const Register = () => {
               type="email"
               name="email"
               required
+              maxLength={254}
               value={form.email}
               onChange={handleChange}
               className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -93,6 +98,7 @@ const Register = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">Phone number</label>
             <input
               name="phone"
+              maxLength={32}
               value={form.phone}
               onChange={handleChange}
               className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -103,6 +109,7 @@ const Register = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
             <input
               name="address"
+              maxLength={300}
               value={form.address}
               onChange={handleChange}
               className="w-full rounded-md border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -113,6 +120,8 @@ const Register = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
             <input
               type="password"
+              minLength={12}
+              maxLength={72}
               name="password"
               required
               value={form.password}
@@ -125,6 +134,8 @@ const Register = () => {
             <label className="block text-sm font-medium text-gray-700 mb-1">Confirm password</label>
             <input
               type="password"
+              minLength={12}
+              maxLength={72}
               name="confirmPassword"
               required
               value={form.confirmPassword}

@@ -6,6 +6,7 @@ import { UserRole } from "../types";
 interface DecodedToken {
   id: string;
   role: UserRole;
+  authVersion?: number;
 }
 
 declare global {
@@ -30,6 +31,9 @@ export const protect = async (req: Request, res: Response, next: NextFunction) =
     if (!user) {
       return res.status(401).json({ message: "User no longer exists" });
     }
+    if ((decoded.authVersion ?? 0) !== user.authVersion) {
+      return res.status(401).json({ message: "Session expired; please log in again" });
+    }
 
     req.user = user;
     next();
@@ -44,7 +48,7 @@ export const optionalProtect = async (req: Request, _res: Response, next: NextFu
     if (token) {
       const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET as string) as DecodedToken;
       const user = await User.findById(decoded.id);
-      if (user) {
+      if (user && (decoded.authVersion ?? 0) === user.authVersion) {
         req.user = user;
       }
     }

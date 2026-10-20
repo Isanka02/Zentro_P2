@@ -25,4 +25,7 @@ const conversationSchema = new Schema<IConversation>(
   { timestamps: true }
 );
 
+conversationSchema.index({ user: 1, lastMessageAt: -1 });
+conversationSchema.index({ status: 1, lastMessageAt: -1 });
+
 export default model<IConversation>("Conversation", conversationSchema);

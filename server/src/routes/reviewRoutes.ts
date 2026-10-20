@@ -1,11 +1,11 @@
 import { Router } from "express";
 import { createReview, getProductReviews, deleteReview } from "../controllers/reviewController";
-import { protect } from "../middleware/auth";
+import { optionalProtect, protect } from "../middleware/auth";
 
 const router = Router({ mergeParams: true });
 
 router.post("/", protect, createReview);
-router.get("/", getProductReviews);
+router.get("/", optionalProtect, getProductReviews);
 router.delete("/:id", protect, deleteReview);
 
 export default router;

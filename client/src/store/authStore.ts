@@ -16,3 +16,10 @@ export const useAuthStore = create<AuthState>((set) => ({
   setLoading: (loading) => set({ isLoading: loading }),
   clearUser: () => set({ user: null }),
 }));
+
+let authRevision = 0;
+useAuthStore.subscribe((state, previousState) => {
+  if (state.user?.id !== previousState.user?.id) authRevision += 1;
+});
+
+export const getAuthRevision = () => authRevision;

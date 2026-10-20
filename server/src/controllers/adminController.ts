@@ -2,6 +2,9 @@ import { Request, Response } from "express";
 import Order from "../models/Order";
 import Product from "../models/Product";
 import User from "../models/User";
+import { Types } from "mongoose";
+import { getRequestBody } from "../utils/requestBody";
+import { escapeRegex } from "../utils/escapeRegex";
 
 export const getDashboardStats = async (_req: Request, res: Response) => {
   try {
@@ -22,17 +25,17 @@ export const getDashboardStats = async (_req: Request, res: Response) => {
         { $group: { _id: "$status", count: { $sum: 1 } } },
       ]),
 
-      // Total revenue (sum of all non-cancelled order totals)
+      // Revenue includes only captured/received payments; pending bank transfers and COD orders are excluded.
       Order.aggregate([
-        { $match: { status: { $ne: "cancelled" } } },
+        { $match: { status: { $ne: "cancelled" }, isPaid: true } },
         { $group: { _id: null, total: { $sum: "$total" } } },
       ]),
 
-      // Total product count
-      Product.countDocuments(),
+      // Active products available in the catalog (including legacy documents without isActive).
+      Product.countDocuments({ isActive: { $ne: false } }),
 
-      // Products with stock <= 5 (low stock alert)
-      Product.countDocuments({ stock: { $lte: 5 } }),
+      // Active products with stock <= 5 (low stock alert)
+      Product.countDocuments({ isActive: { $ne: false }, stock: { $lte: 5 } }),
 
       // Total registered user count
       User.countDocuments(),
@@ -72,13 +75,8 @@ export const getDashboardStats = async (_req: Request, res: Response) => {
       ordersByStatus: statusMap,
       recentOrders,
     });
-  } catch (err) {
-    return res.status(500).json({
-      message:
-        err instanceof Error
-          ? err.message
-          : "Failed to fetch dashboard stats",
-    });
+  } catch {
+    return res.status(500).json({ message: "Failed to fetch dashboard stats" });
   }
 };
 
@@ -91,17 +89,23 @@ export const getAllUsersAdmin = async (
   res: Response
 ) => {
   try {
-    const {
-      page = "1",
-      limit = "20",
-      search = "",
-    } = req.query as Record<string, string>;
-
-    const pageNum = Math.max(1, parseInt(page, 10) || 1);
-    const limitNum = Math.max(
-      1,
-      Math.min(100, parseInt(limit, 10) || 20)
-    );
+    for (const key of ["page", "limit", "search"] as const) {
+      if (req.query[key] !== undefined && typeof req.query[key] !== "string") {
+        return res.status(400).json({ message: "Search parameters must each have one text value" });
+      }
+    }
+    const page = typeof req.query.page === "string" ? req.query.page : "1";
+    const limit = typeof req.query.limit === "string" ? req.query.limit : "20";
+    const search = typeof req.query.search === "string" ? req.query.search : "";
+    const pageNum = Number(page);
+    const limitNum = Number(limit);
+    if (!/^\d+$/.test(page) || !Number.isSafeInteger(pageNum) || pageNum < 1 || pageNum > 100000) {
+      return res.status(400).json({ message: "Page must be a whole number between 1 and 100000" });
+    }
+    if (!/^\d+$/.test(limit) || !Number.isSafeInteger(limitNum) || limitNum < 1 || limitNum > 100) {
+      return res.status(400).json({ message: "Limit must be a whole number between 1 and 100" });
+    }
+    if (search.length > 100) return res.status(400).json({ message: "Search text must be 100 characters or fewer" });
 
     const skip = (pageNum - 1) * limitNum;
 
@@ -110,7 +114,7 @@ export const getAllUsersAdmin = async (
     // Search users by name or email
     if (search.trim()) {
       const searchRegex = {
-        $regex: search.trim(),
+        $regex: escapeRegex(search.trim().slice(0, 100)),
         $options: "i",
       };
 
@@ -139,13 +143,8 @@ export const getAllUsersAdmin = async (
         totalPages: Math.ceil(total / limitNum),
       },
     });
-  } catch (err) {
-    return res.status(500).json({
-      message:
-        err instanceof Error
-          ? err.message
-          : "Failed to fetch users",
-    });
+  } catch {
+    return res.status(500).json({ message: "Failed to fetch users" });
   }
 };
 
@@ -155,7 +154,7 @@ export const updateUserRoleAdmin = async (
 ) => {
   try {
     const { id } = req.params;
-    const { role } = req.body;
+    const { role } = getRequestBody(req.body);
 
     // Validate role
     if (role !== "customer" && role !== "admin") {
@@ -165,7 +164,7 @@ export const updateUserRoleAdmin = async (
     }
 
     // Validate user ID parameter
-    if (!id || Array.isArray(id)) {
+    if (!id || Array.isArray(id) || !Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         message: "Invalid user ID",
       });
@@ -186,20 +185,25 @@ export const updateUserRoleAdmin = async (
       });
     }
 
-    user.role = role;
+    if (user.role === "admin" && role === "customer") {
+      const adminCount = await User.countDocuments({ role: "admin" });
+      if (adminCount <= 1) {
+        return res.status(409).json({ message: "The last administrator cannot be demoted" });
+      }
+    }
 
-    await user.save();
+    if (user.role !== role) {
+      user.role = role;
+      // Role changes must revoke sessions signed with the previous authorization state.
+      user.authVersion += 1;
+      await user.save();
+    }
 
     return res.json({
       message: "User role updated successfully",
       user,
     });
-  } catch (err) {
-    return res.status(500).json({
-      message:
-        err instanceof Error
-          ? err.message
-          : "Failed to update user role",
-    });
+  } catch {
+    return res.status(500).json({ message: "Failed to update user role" });
   }
 };

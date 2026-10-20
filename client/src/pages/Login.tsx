@@ -2,7 +2,8 @@ import { useState, type FormEvent } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { loginUser } from "../api/auth";
-import { useAuthStore } from "../store/authStore";
+import { getAuthRevision, useAuthStore } from "../store/authStore";
+import { getErrorMessage } from "../lib/errorMessage";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -18,13 +19,15 @@ const Login = () => {
     e.preventDefault();
     setError("");
     setIsSubmitting(true);
+    const authRevision = getAuthRevision();
 
     try {
       const user = await loginUser({ email, password });
+      if (authRevision !== getAuthRevision()) return;
       setUser(user);
       navigate(user.role === "admin" ? "/admin" : "/");
-    } catch (err: any) {
-      setError(err?.response?.data?.message || "Login failed. Please try again.");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Login failed. Please try again."));
     } finally {
       setIsSubmitting(false);
     }

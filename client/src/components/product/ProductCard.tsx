@@ -5,6 +5,8 @@ import { formatPrice } from "../../lib/formatPrice";
 import { useCartStore } from "../../store/cartStore";
 import { useWishlistStore } from "../../store/wishlistStore";
 
+const PAGE_RENDERED_AT = Date.now();
+
 interface ProductCardProps {
   product: Product;
 }
@@ -14,12 +16,14 @@ const ProductCard = ({ product }: ProductCardProps) => {
   const toggleWishlist = useWishlistStore((s) => s.toggleWishlist);
   const isWishlisted = useWishlistStore((s) => s.isWishlisted(product._id));
 
-  const hasDiscount = product.discountPrice && product.discountPrice < product.price;
-  const isNew = Date.now() - new Date(product.createdAt).getTime() < 14 * 24 * 60 * 60 * 1000;
+  const hasDiscount = product.discountPrice !== undefined && product.discountPrice < product.price;
+  const hasVariants = product.variants?.length > 0;
+  const isNew = PAGE_RENDERED_AT - new Date(product.createdAt).getTime() < 14 * 24 * 60 * 60 * 1000;
   const isTopRated = product.rating >= 4.5 && product.numReviews > 0;
 
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault();
+    if (hasVariants) return;
     addItem({
       productId: product._id,
       name: product.name,
@@ -91,7 +95,7 @@ const ProductCard = ({ product }: ProductCardProps) => {
 
         <div className="flex items-center gap-2 mt-2">
           <span className="font-semibold text-gray-900">
-            {formatPrice(hasDiscount ? product.discountPrice! : product.price)}
+            {hasVariants ? "From " : ""}{formatPrice(hasDiscount ? product.discountPrice! : product.price)}
           </span>
           {hasDiscount && (
             <span className="text-xs text-gray-400 line-through">{formatPrice(product.price)}</span>
@@ -106,13 +110,19 @@ const ProductCard = ({ product }: ProductCardProps) => {
           )}
         </p>
 
-        <button
-          onClick={handleAddToCart}
-          disabled={product.stock === 0}
-          className="w-full mt-2 bg-blue-600 text-white text-sm py-1.5 rounded-md hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          Add to cart
-        </button>
+        {hasVariants ? (
+          <Link to={`/products/${product._id}`} className="block w-full mt-2 bg-blue-600 text-white text-sm py-1.5 rounded-md text-center hover:bg-blue-700 transition-colors">
+            Choose options
+          </Link>
+        ) : (
+          <button
+            onClick={handleAddToCart}
+            disabled={product.stock === 0}
+            className="w-full mt-2 bg-blue-600 text-white text-sm py-1.5 rounded-md hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          >
+            Add to cart
+          </button>
+        )}
       </div>
     </div>
   );

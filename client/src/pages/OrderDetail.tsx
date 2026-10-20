@@ -11,9 +11,14 @@ import {
   XCircle,
   AlertCircle,
   Tag,
+  Ban,
 } from "lucide-react";
-import { getOrderById, type Order } from "../api/orders";
+import { cancelMyOrder, getOrderById, type Order } from "../api/orders";
 import TrackingTimeline from "../components/orders/TrackingTimeline";
+import BankTransferInstructions from "../components/payments/BankTransferInstructions";
+import { getErrorMessage } from "../lib/errorMessage";
+import { useAuthStore } from "../store/authStore";
+import ReturnRequestPanel from "../components/orders/ReturnRequestPanel";
 
 const statusConfig: Record<
   Order["status"],
@@ -29,27 +34,32 @@ const statusConfig: Record<
 const OrderDetail = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [order, setOrder] = useState<Order | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const userId = useAuthStore((state) => state.user?.id);
+  const [loadState, setLoadState] = useState<{ key: string; order?: Order; error?: string }>({ key: "" });
+  const [cancelError, setCancelError] = useState("");
+  const [cancelling, setCancelling] = useState(false);
+  const requestKey = `${userId ?? ""}:${id ?? ""}`;
+  const loading = loadState.key !== requestKey;
+  const order = loading ? null : loadState.order ?? null;
+  const error = loading ? "" : loadState.error ?? "";
 
   useEffect(() => {
-    if (!id) return;
+    let cancelled = false;
+    if (!id || !userId) return () => { cancelled = true; };
     const fetchOrder = async () => {
-      setLoading(true);
-      setError("");
       try {
         const data = await getOrderById(id);
-        setOrder(data);
-      } catch (err: any) {
-        setError(err?.response?.data?.message || "Failed to load order details.");
-      } finally {
-        setLoading(false);
+        if (!cancelled && useAuthStore.getState().user?.id === userId) setLoadState({ key: requestKey, order: data });
+      } catch (err: unknown) {
+        if (!cancelled && useAuthStore.getState().user?.id === userId) {
+          setLoadState({ key: requestKey, error: getErrorMessage(err, "Failed to load order details.") });
+        }
       }
     };
 
     fetchOrder();
-  }, [id]);
+    return () => { cancelled = true; };
+  }, [id, requestKey, userId]);
 
   if (loading) {
     return (
@@ -80,6 +90,22 @@ const OrderDetail = () => {
     );
   }
 
+  const canCancel = !order.isPaid && (order.status === "pending" || order.status === "confirmed");
+
+  const handleCancelOrder = async () => {
+    if (!window.confirm("Cancel this order? Its reserved stock and discount usage will be restored.")) return;
+    const requesterId = userId;
+    setCancelling(true);
+    setCancelError("");
+    try {
+      const updatedOrder = await cancelMyOrder(order._id);
+      if (useAuthStore.getState().user?.id === requesterId) setLoadState({ key: requestKey, order: updatedOrder });
+    } catch (err: unknown) {
+      if (useAuthStore.getState().user?.id === requesterId) setCancelError(getErrorMessage(err, "Could not cancel this order."));
+    } finally {
+      if (useAuthStore.getState().user?.id === requesterId) setCancelling(false);
+    }
+  };
   const StatusIcon = statusConfig[order.status]?.icon || Clock;
   const paymentMethodLabel =
     order.paymentMethod === "cod" ? "Cash on Delivery" : "Bank Transfer";
@@ -137,8 +163,15 @@ const OrderDetail = () => {
             <Truck size={15} />
             Track Package
           </Link>
+          {canCancel && (
+            <button type="button" onClick={() => void handleCancelOrder()} disabled={cancelling} className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3.5 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:opacity-50">
+              <Ban size={15} />{cancelling ? "Cancelling..." : "Cancel order"}
+            </button>
+          )}
         </div>
       </div>
+
+      {cancelError && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{cancelError}</div>}
 
       {/* Visual Tracking Progress Timeline */}
       <TrackingTimeline
@@ -151,7 +184,7 @@ const OrderDetail = () => {
       />
 
       {/* Tracking Info if available */}
-      {(order.trackingNumber || order.carrier) && (
+      {(order.trackingNumber || order.carrier || order.trackingUrl) && (
         <div className="bg-purple-50 border border-purple-200 rounded-xl p-5 flex items-start gap-4">
           <Truck size={24} className="text-purple-600 flex-shrink-0 mt-0.5" />
           <div>
@@ -173,9 +206,12 @@ const OrderDetail = () => {
                 </span>
               </p>
             )}
+            {order.trackingUrl && <a href={order.trackingUrl} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex text-xs font-semibold text-purple-800 underline hover:text-purple-950">Open courier tracking page</a>}
           </div>
         </div>
       )}
+
+      <ReturnRequestPanel orderId={order._id} status={order.status} />
 
       {/* Items Section */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-xs">
@@ -194,6 +230,7 @@ const OrderDetail = () => {
               />
               <div className="flex-1 min-w-0">
                 <h3 className="font-medium text-gray-900 text-sm truncate">{item.name}</h3>
+                {item.variantLabel && <p className="text-xs text-gray-500">Option: {item.variantLabel}</p>}
                 <p className="text-xs text-gray-500 mt-0.5">
                   LKR {item.price.toLocaleString()} x {item.quantity}
                 </p>
@@ -239,6 +276,10 @@ const OrderDetail = () => {
             <CreditCard size={18} className="text-blue-600" />
             Payment & Summary
           </div>
+
+          {order.paymentMethod === "bank_transfer" && !order.isPaid && order.status !== "cancelled" && (
+            <BankTransferInstructions orderNumber={order.orderNumber} total={order.total} />
+          )}
 
           <div className="space-y-2 text-xs">
             <div className="flex justify-between text-gray-600">

@@ -29,13 +29,14 @@ const CartItem = ({ item }: { item: CartItemType }) => {
             {item.name}
           </h3>
         </Link>
+        {item.variantLabel && <p className="text-xs text-gray-500 mt-0.5">Option: {item.variantLabel}</p>}
         {item.sellerName && <p className="text-xs text-gray-500 mt-0.5">{item.sellerName}</p>}
         <p className="text-sm font-semibold text-gray-900 mt-1">{formatPrice(item.price)}</p>
 
         <div className="flex items-center justify-between mt-2">
           <div className="flex items-center border border-gray-300 rounded-md">
             <button
-              onClick={() => updateQuantity(item.productId, item.quantity - 1)}
+              onClick={() => updateQuantity(item.productId, item.variantId, item.quantity - 1)}
               disabled={item.quantity <= 1}
               className="p-1.5 text-gray-600 hover:bg-gray-50 disabled:opacity-30"
             >
@@ -43,7 +44,7 @@ const CartItem = ({ item }: { item: CartItemType }) => {
             </button>
             <span className="w-8 text-center text-sm">{item.quantity}</span>
             <button
-              onClick={() => updateQuantity(item.productId, item.quantity + 1)}
+              onClick={() => updateQuantity(item.productId, item.variantId, item.quantity + 1)}
               disabled={item.quantity >= item.stock}
               className="p-1.5 text-gray-600 hover:bg-gray-50 disabled:opacity-30"
             >
@@ -52,7 +53,7 @@ const CartItem = ({ item }: { item: CartItemType }) => {
           </div>
 
           <button
-            onClick={() => removeItem(item.productId)}
+            onClick={() => removeItem(item.productId, item.variantId)}
             className="text-gray-400 hover:text-red-500 p-1"
             aria-label="Remove item"
           >

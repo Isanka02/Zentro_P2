@@ -4,20 +4,23 @@ import {
   getProductById,
   createProduct,
   updateProduct,
-  deleteProduct,
+  updateProductAvailability,
 } from "../controllers/productController";
-import { protect, adminOnly } from "../middleware/auth";
-import upload from "../middleware/upload";
+import { protect, optionalProtect, adminOnly } from "../middleware/auth";
+import { uploadProductImages } from "../middleware/upload";
+import { validateProductImages } from "../middleware/validateProductImages";
+import { catalogSearchLimiter } from "../middleware/rateLimiter";
 
 const router = Router();
 
-router.get("/", getProducts);
+router.get("/", catalogSearchLimiter, optionalProtect, getProducts);
 router.get("/:id", getProductById);
 router.post(
   "/",
   protect,
   adminOnly,
-  upload.array("images", 5),
+  uploadProductImages,
+  validateProductImages,
   createProduct
 );
 
@@ -25,10 +28,11 @@ router.put(
   "/:id",
   protect,
   adminOnly,
-  upload.array("images", 5),
+  uploadProductImages,
+  validateProductImages,
   updateProduct
 );
-router.delete("/:id", protect, adminOnly, deleteProduct);
+router.patch("/:id/availability", protect, adminOnly, updateProductAvailability);
 
 
 export default router;

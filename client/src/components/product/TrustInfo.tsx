@@ -1,9 +1,18 @@
-import { Truck, RotateCcw, ShieldCheck } from "lucide-react";
+import { Truck, Headphones, ShieldCheck } from "lucide-react";
+import { formatPrice } from "../../lib/formatPrice";
+import { useShippingOptions } from "../../hooks/useShippingOptions";
 
 const TrustInfo = () => {
+  const { data: shippingOptions } = useShippingOptions();
   const items = [
-    { icon: Truck, title: "Free delivery", desc: "On orders over LKR 5,000" },
-    { icon: RotateCcw, title: "7-day returns", desc: "Easy returns and exchanges" },
+    {
+      icon: Truck,
+      title: "Free delivery",
+      desc: shippingOptions
+        ? `On orders of ${formatPrice(shippingOptions.freeShippingThreshold)} or more`
+        : "Delivery fees shown at checkout",
+    },
+    { icon: Headphones, title: "Customer support", desc: "Get help with orders and products" },
     { icon: ShieldCheck, title: "Secure checkout", desc: "Your payment is protected" },
   ];
 

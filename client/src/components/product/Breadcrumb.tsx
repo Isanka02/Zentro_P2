@@ -11,7 +11,7 @@ const Breadcrumb = ({ category, productName }: BreadcrumbProps) => {
     <nav className="flex items-center gap-1.5 text-sm text-gray-500 mb-4 flex-wrap">
       <Link to="/" className="hover:text-blue-600">Home</Link>
       <ChevronRight size={14} />
-      <Link to={`/?category=${category.slug}`} className="hover:text-blue-600">
+      <Link to={`/products?category=${encodeURIComponent(category.slug)}`} className="hover:text-blue-600">
         {category.name}
       </Link>
       <ChevronRight size={14} />

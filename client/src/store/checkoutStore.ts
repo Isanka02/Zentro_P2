@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useAuthStore } from "./authStore";
 import type { Province } from "../lib/shippingData";
 import type { DiscountValidation } from "../api/discounts";
 
@@ -45,3 +46,15 @@ export const useCheckoutStore = create<CheckoutState>((set) => ({
   paymentMethod: "cod",
   setPaymentMethod: (method) => set({ paymentMethod: method }),
 }));
+
+// Shipping and discount data can contain personal information, so discard it
+// whenever the active account changes.
+useAuthStore.subscribe((state, previousState) => {
+  if (state.user?.id !== previousState.user?.id) {
+    useCheckoutStore.setState({
+      shippingInfo: { ...emptyShippingInfo },
+      discount: null,
+      paymentMethod: "cod",
+    });
+  }
+});

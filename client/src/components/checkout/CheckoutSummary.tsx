@@ -1,6 +1,7 @@
 import { formatPrice } from "../../lib/formatPrice";
-import { calculateShipping, FREE_SHIPPING_THRESHOLD } from "../../lib/shippingData";
+import { calculateShipping } from "../../lib/shippingData";
 import type { Province } from "../../lib/shippingData";
+import { useShippingOptions } from "../../hooks/useShippingOptions";
 import type { CartItem } from "../../store/cartStore";
 import type { DiscountValidation } from "../../api/discounts";
 import DiscountCodeInput from "./DiscountCodeInput";
@@ -12,6 +13,7 @@ interface CheckoutSummaryProps {
   discount: DiscountValidation | null;
   onApplyDiscount: (discount: DiscountValidation) => void;
   onRemoveDiscount: () => void;
+  isSubmitting: boolean;
 }
 
 const CheckoutSummary = ({
@@ -21,8 +23,11 @@ const CheckoutSummary = ({
   discount,
   onApplyDiscount,
   onRemoveDiscount,
+  isSubmitting,
 }: CheckoutSummaryProps) => {
-  const shipping = calculateShipping(province, subtotal);
+  const { data: shippingOptions, isError: shippingOptionsError } = useShippingOptions();
+  const shipping = calculateShipping(province, subtotal, shippingOptions);
+  const freeShippingThreshold = shippingOptions?.freeShippingThreshold;
   const discountAmount = discount?.discountAmount ?? 0;
   const tax = 0;
   const total = Math.max(0, subtotal + shipping + tax - discountAmount);
@@ -33,9 +38,9 @@ const CheckoutSummary = ({
 
       <div className="space-y-2 max-h-56 overflow-y-auto mb-4">
         {items.map((item) => (
-          <div key={item.productId} className="flex justify-between text-sm">
+          <div key={`${item.productId}:${item.variantId ?? "default"}`} className="flex justify-between text-sm">
             <span className="text-gray-600 truncate pr-2">
-              {item.name} <span className="text-gray-400">× {item.quantity}</span>
+              {item.name}{item.variantLabel && <span className="text-gray-400"> · {item.variantLabel}</span>} <span className="text-gray-400">× {item.quantity}</span>
             </span>
             <span className="text-gray-900 shrink-0">{formatPrice(item.price * item.quantity)}</span>
           </div>
@@ -64,7 +69,7 @@ const CheckoutSummary = ({
         )}
         <div className="flex justify-between text-gray-600">
           <span>Shipping</span>
-          <span>{!province ? "Select province" : shipping === 0 ? "Free" : formatPrice(shipping)}</span>
+          <span>{!shippingOptions ? (shippingOptionsError ? "Unavailable" : "Loading…") : !province ? "Select province" : shipping === 0 ? "Free" : formatPrice(shipping)}</span>
         </div>
         <div className="flex justify-between text-gray-600">
           <span>Tax</span>
@@ -72,9 +77,9 @@ const CheckoutSummary = ({
         </div>
       </div>
 
-      {subtotal < FREE_SHIPPING_THRESHOLD && (
+      {freeShippingThreshold !== undefined && subtotal < freeShippingThreshold && (
         <p className="text-xs text-blue-600 mt-2">
-          Add {formatPrice(FREE_SHIPPING_THRESHOLD - subtotal)} more for free shipping
+          Add {formatPrice(freeShippingThreshold - subtotal)} more for free shipping
         </p>
       )}
 
@@ -86,9 +91,10 @@ const CheckoutSummary = ({
       <button
         type="submit"
         form="shipping-form"
-        className="w-full mt-5 bg-blue-600 text-white py-3 rounded-md font-medium hover:bg-blue-700 transition-colors"
+        disabled={isSubmitting || !shippingOptions}
+        className="w-full mt-5 bg-blue-600 text-white py-3 rounded-md font-medium hover:bg-blue-700 transition-colors disabled:cursor-not-allowed disabled:opacity-60"
       >
-        Place order
+        {isSubmitting ? "Placing order…" : "Place order"}
       </button>
     </div>
   );

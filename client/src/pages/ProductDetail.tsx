@@ -19,6 +19,13 @@ const ProductDetail = () => {
   const { data: product, isLoading, isError } = useProduct(id);
   const [quantity, setQuantity] = useState(1);
   const [justAdded, setJustAdded] = useState(false);
+  const [selectedVariantId, setSelectedVariantId] = useState("");
+  const [prevId, setPrevId] = useState(id);
+  if (prevId !== id) {
+    setPrevId(id);
+    setSelectedVariantId("");
+    setQuantity(1);
+  }
 
   const addItem = useCartStore((s) => s.addItem);
   const toggleWishlist = useWishlistStore((s) => s.toggleWishlist);
@@ -53,8 +60,13 @@ const ProductDetail = () => {
     );
   }
 
-  const hasDiscount = product.discountPrice && product.discountPrice < product.price;
-  const displayPrice = hasDiscount ? product.discountPrice! : product.price;
+  const selectedVariant = product.variants?.find((variant) => variant._id === selectedVariantId) ?? product.variants?.[0];
+  const hasOptions = Boolean(product.variants?.length);
+  const regularPrice = selectedVariant?.price ?? product.price;
+  const discountedPrice = selectedVariant?.discountPrice ?? product.discountPrice;
+  const hasDiscount = discountedPrice !== undefined && discountedPrice < regularPrice;
+  const displayPrice = hasDiscount ? discountedPrice : regularPrice;
+  const availableStock = selectedVariant?.stock ?? product.stock;
 
   const handleAddToCart = () => {
     addItem(
@@ -63,7 +75,8 @@ const ProductDetail = () => {
         name: product.name,
         image: product.images[0] || "",
         price: displayPrice,
-        stock: product.stock,
+        stock: availableStock,
+        ...(selectedVariant ? { variantId: selectedVariant._id, variantLabel: selectedVariant.label } : {}),
       },
       quantity
     );
@@ -88,40 +101,59 @@ const ProductDetail = () => {
           <div className="flex items-center gap-3 mt-4">
             <span className="text-2xl font-bold text-gray-900">{formatPrice(displayPrice)}</span>
             {hasDiscount && (
-              <span className="text-base text-gray-400 line-through">{formatPrice(product.price)}</span>
+              <span className="text-base text-gray-400 line-through">{formatPrice(regularPrice)}</span>
             )}
           </div>
+
+          {hasOptions && (
+            <div className="mt-4">
+              <label htmlFor="product-variant" className="block text-sm font-medium text-gray-700 mb-2">Choose an option</label>
+              <select
+                id="product-variant"
+                value={selectedVariant?._id ?? ""}
+                onChange={(event) => { setSelectedVariantId(event.target.value); setQuantity(1); }}
+                className="w-full max-w-sm rounded-md border border-gray-300 bg-white px-3 py-2 text-sm"
+              >
+                {product.variants.map((variant) => (
+                  <option key={variant._id} value={variant._id}>
+                    {variant.label} · {formatPrice(variant.discountPrice ?? variant.price)}{variant.stock === 0 ? " · Out of stock" : ""}
+                  </option>
+                ))}
+              </select>
+              {selectedVariant?.sku && <p className="mt-1 text-xs text-gray-500">SKU: {selectedVariant.sku}</p>}
+            </div>
+          )}
 
           <p className="text-gray-600 text-sm mt-4 leading-relaxed">{product.description}</p>
 
           <p className="text-sm mt-4">
-            {product.stock > 0 ? (
-              <span className="text-green-600">In stock ({product.stock} available)</span>
+            {availableStock > 0 ? (
+              <span className="text-green-600">In stock ({availableStock} available)</span>
             ) : (
               <span className="text-red-500">Out of stock</span>
             )}
           </p>
 
-          {product.stock > 0 && (
+          {availableStock > 0 && (
             <div className="mt-4">
               <p className="text-sm font-medium text-gray-700 mb-2">Quantity</p>
-              <QuantitySelector quantity={quantity} onChange={setQuantity} max={product.stock} />
+              <QuantitySelector quantity={quantity} onChange={setQuantity} max={availableStock} />
             </div>
           )}
 
           <div className="flex gap-3 mt-6">
             <button
               onClick={handleAddToCart}
-              disabled={product.stock === 0}
+              disabled={availableStock === 0}
               className="flex-1 bg-blue-600 text-white py-3 rounded-md font-medium hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
-              {justAdded ? "Added!" : "Add to cart"}
+              {justAdded ? "Added!" : hasOptions ? "Add selected option" : "Add to cart"}
             </button>
             <Link
               to="/cart"
               onClick={handleAddToCart}
               className={`flex-1 flex items-center justify-center border border-blue-600 text-blue-600 py-3 rounded-md font-medium hover:bg-blue-50 transition-colors ${
-                product.stock === 0 ? "pointer-events-none opacity-40" : ""
+                availableStock === 0 ? "pointer-events-none opacity-40" : ""
               }`}
             >
               Buy now

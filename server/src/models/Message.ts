@@ -21,4 +21,6 @@ const messageSchema = new Schema<IMessage>(
   { timestamps: { createdAt: true, updatedAt: false } }
 );
 
+messageSchema.index({ conversation: 1, createdAt: 1 });
+
 export default model<IMessage>("Message", messageSchema);

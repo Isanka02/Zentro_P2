@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
     "build": "tsc",
+    "test": "npm run build && node --test test/money.test.cjs test/shipping.test.cjs test/orderStatusPolicy.test.cjs test/originPolicy.test.cjs test/confirmBankTransfer.test.cjs test/updateOrderStatus.test.cjs",
     "start": "npm run build && node dist/index.js"
   },
   "keywords": [],

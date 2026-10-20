@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useAuthStore } from "../store/authStore";
+import { getAuthRevision, useAuthStore } from "../store/authStore";
 import { getCurrentUser } from "../api/auth";
 
 export const useAuthCheck = () => {
@@ -7,11 +7,12 @@ export const useAuthCheck = () => {
 
   useEffect(() => {
     const checkAuth = async () => {
+      const revision = getAuthRevision();
       try {
         const user = await getCurrentUser();
-        setUser(user);
+        if (revision === getAuthRevision()) setUser(user);
       } catch {
-        setUser(null);
+        if (revision === getAuthRevision()) setUser(null);
       } finally {
         setLoading(false);
       }

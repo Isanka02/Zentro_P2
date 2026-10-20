@@ -1,7 +1,9 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
+import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { Star, Trash2, MessageSquare, AlertCircle, CheckCircle2 } from "lucide-react";
-import { getProductReviews, createReview, deleteReview, type Review } from "../../api/reviews";
+import { getProductReviews, createReview, deleteReview } from "../../api/reviews";
 import { useAuthStore } from "../../store/authStore";
+import { getErrorMessage } from "../../lib/errorMessage";
 
 interface ReviewSectionProps {
   productId: string;
@@ -17,9 +19,17 @@ export const ReviewSection = ({
   onReviewSubmitted,
 }: ReviewSectionProps) => {
   const { user } = useAuthStore();
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const queryClient = useQueryClient();
+  const reviewsQuery = useInfiniteQuery({
+    queryKey: ["product-reviews", productId, user?.id],
+    queryFn: ({ pageParam }) => getProductReviews(productId, pageParam),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => lastPage.pagination.page < lastPage.pagination.totalPages
+      ? lastPage.pagination.page + 1
+      : undefined,
+  });
+  const reviews = reviewsQuery.data?.pages.flatMap((result) => result.reviews) ?? [];
+  const hasReviewed = Boolean(user && reviewsQuery.data?.pages[0]?.hasReviewed);
 
   // Review Form state
   const [userRating, setUserRating] = useState<number>(5);
@@ -28,23 +38,6 @@ export const ReviewSection = ({
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
   const [formSuccess, setFormSuccess] = useState("");
-
-  const fetchReviews = async () => {
-    setLoading(true);
-    setError("");
-    try {
-      const data = await getProductReviews(productId);
-      setReviews(data);
-    } catch (err: any) {
-      setError(err?.response?.data?.message || "Failed to load reviews.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchReviews();
-  }, [productId]);
 
   const handleSubmitReview = async (e: FormEvent) => {
     e.preventDefault();
@@ -62,13 +55,24 @@ export const ReviewSection = ({
         rating: userRating,
         comment: comment.trim(),
       });
-      setReviews((prev) => [newReview, ...prev]);
+      queryClient.setQueryData(
+        ["product-reviews", productId, user?.id],
+        (current: typeof reviewsQuery.data) => current ? {
+          ...current,
+          pages: current.pages.map((page, index) => index === 0 ? {
+            ...page,
+            hasReviewed: true,
+            reviews: [newReview, ...page.reviews].slice(0, page.pagination.limit),
+            pagination: { ...page.pagination, total: page.pagination.total + 1, totalPages: Math.ceil((page.pagination.total + 1) / page.pagination.limit) },
+          } : page),
+        } : current
+      );
       setComment("");
       setUserRating(5);
       setFormSuccess("Thank you! Your review has been submitted.");
       if (onReviewSubmitted) onReviewSubmitted();
-    } catch (err: any) {
-      setFormError(err?.response?.data?.message || "Failed to submit review.");
+    } catch (err: unknown) {
+      setFormError(getErrorMessage(err, "Failed to submit review."));
     } finally {
       setSubmitting(false);
     }
@@ -78,14 +82,12 @@ export const ReviewSection = ({
     if (!confirm("Are you sure you want to delete this review?")) return;
     try {
       await deleteReview(reviewId);
-      setReviews((prev) => prev.filter((r) => r._id !== reviewId));
+      await queryClient.invalidateQueries({ queryKey: ["product-reviews", productId] });
       if (onReviewSubmitted) onReviewSubmitted();
-    } catch (err: any) {
-      alert(err?.response?.data?.message || "Failed to delete review.");
+    } catch (err: unknown) {
+      alert(getErrorMessage(err, "Failed to delete review."));
     }
   };
-
-  const hasReviewed = user && reviews.some((r) => r.user?._id === user.id);
 
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-6 sm:p-8 space-y-8 shadow-xs mt-10">
@@ -97,7 +99,7 @@ export const ReviewSection = ({
             Customer Reviews
           </h2>
           <p className="text-xs text-gray-500 mt-1">
-            Ratings and feedback from verified purchasers
+            Customer feedback. Verified purchases are marked below.
           </p>
         </div>
 
@@ -199,14 +201,14 @@ export const ReviewSection = ({
 
       {/* Reviews List */}
       <div className="space-y-4">
-        {loading ? (
+        {reviewsQuery.isLoading ? (
           <div className="space-y-3">
             {[1, 2].map((i) => (
               <div key={i} className="h-20 bg-gray-100 rounded-xl animate-pulse"></div>
             ))}
           </div>
-        ) : error ? (
-          <p className="text-xs text-red-500 text-center">{error}</p>
+        ) : reviewsQuery.isError ? (
+          <p className="text-xs text-red-500 text-center">{getErrorMessage(reviewsQuery.error, "Failed to load reviews.")}</p>
         ) : reviews.length === 0 ? (
           <div className="text-center py-8 text-gray-500 text-xs">
             No reviews yet. Be the first to review this product!
@@ -231,11 +233,14 @@ export const ReviewSection = ({
                     </div>
                     <div>
                       <span className="font-semibold text-gray-900 text-xs block">
-                        {r.user?.name || "Verified Customer"}
+                        {r.user?.name || "Zentro Customer"}
                       </span>
                       <span className="text-[10px] text-gray-400">
                         {new Date(r.createdAt).toLocaleDateString()}
                       </span>
+                      {r.verifiedPurchase && (
+                        <span className="mt-1 inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700">Verified purchase</span>
+                      )}
                     </div>
                   </div>
 
@@ -266,6 +271,11 @@ export const ReviewSection = ({
               </div>
             );
           })
+        )}
+        {reviewsQuery.hasNextPage && (
+          <button onClick={() => void reviewsQuery.fetchNextPage()} disabled={reviewsQuery.isFetchingNextPage} className="mx-auto block rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+            {reviewsQuery.isFetchingNextPage ? "Loading reviews..." : "Load more reviews"}
+          </button>
         )}
       </div>
     </div>

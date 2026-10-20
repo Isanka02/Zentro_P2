@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { User as UserIcon, Mail, Phone, MapPin, Package, Heart, CheckCircle2, AlertCircle, Save, Edit2, Image as ImageIcon, Camera } from "lucide-react";
 import { useAuthStore } from "../store/authStore";
 import { updateProfile } from "../api/auth";
+import ChangePasswordForm from "../components/ChangePasswordForm";
+import { getErrorMessage } from "../lib/errorMessage";
 
 const presetAvatars = [
   "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80",
@@ -87,6 +89,7 @@ const Profile = () => {
     setError("");
     setSuccess("");
 
+    const requesterId = user?.id;
     try {
       const updatedUser = await updateProfile({
         name: name.trim(),
@@ -95,11 +98,15 @@ const Profile = () => {
         avatar: avatar.trim(),
       });
 
-      setUser(updatedUser);
-      setSuccess("Profile updated successfully!");
-      setIsEditing(false);
-    } catch (err: any) {
-      setError(err?.response?.data?.message || "Failed to update profile.");
+      if (useAuthStore.getState().user?.id === requesterId) {
+        setUser(updatedUser);
+        setSuccess("Profile updated successfully!");
+        setIsEditing(false);
+      }
+    } catch (err: unknown) {
+      if (useAuthStore.getState().user?.id === requesterId) {
+        setError(getErrorMessage(err, "Failed to update profile."));
+      }
     } finally {
       setSaving(false);
     }
@@ -215,7 +222,7 @@ const Profile = () => {
                     )}
                   </div>
                   <p className="text-[11px] text-gray-400">
-                    Supports PNG, JPG, or WebP (Max 2MB). Direct upload from your device.
+                    Supports PNG, JPG, or WebP up to 5 MB before compression.
                   </p>
 
                   {/* Preset Quick Options */}
@@ -337,6 +344,8 @@ const Profile = () => {
           </div>
         )}
       </div>
+
+      <ChangePasswordForm />
 
       {/* Quick Action Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

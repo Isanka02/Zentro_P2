@@ -5,7 +5,9 @@ import type { CartItem } from "../store/cartStore";
 export interface CreateOrderRequest {
   items: {
     productId: string;
+    variantId?: string;
     quantity: number;
+    expectedPrice: number;
   }[];
   shippingAddress: ShippingInfo;
   paymentMethod: PaymentMethod;
@@ -14,6 +16,7 @@ export interface CreateOrderRequest {
 
 export interface CreatedOrder {
   id: string;
+  ownerId: string | null;
   orderNumber: string;
   total: number;
   status: string;
@@ -28,6 +31,8 @@ export interface CreateOrderResponse {
 
 export interface OrderItem {
   product: string;
+  variantId?: string;
+  variantLabel?: string;
   name: string;
   image: string;
   price: number;
@@ -52,6 +57,7 @@ export interface Order {
   status: "pending" | "confirmed" | "shipped" | "delivered" | "cancelled";
   trackingNumber?: string;
   carrier?: string;
+  trackingUrl?: string;
   estimatedDelivery?: string;
   createdAt: string;
   updatedAt: string;
@@ -69,12 +75,15 @@ export const createOrder = async (
   items: CartItem[],
   shippingAddress: ShippingInfo,
   paymentMethod: PaymentMethod,
-  discountCode?: string
+  discountCode: string | undefined,
+  idempotencyKey: string
 ): Promise<CreateOrderResponse> => {
   const payload: CreateOrderRequest = {
     items: items.map((item) => ({
       productId: item.productId,
+      ...(item.variantId ? { variantId: item.variantId } : {}),
       quantity: item.quantity,
+      expectedPrice: item.price,
     })),
     shippingAddress,
     paymentMethod,
@@ -83,7 +92,8 @@ export const createOrder = async (
 
   const response = await api.post<CreateOrderResponse>(
     "/orders",
-    payload
+    payload,
+    { headers: { "Idempotency-Key": idempotencyKey } }
   );
 
   return response.data;
@@ -99,20 +109,59 @@ export const getOrderById = async (id: string): Promise<Order> => {
   return response.data.order;
 };
 
-export const trackOrder = async (orderNumber: string): Promise<Order> => {
-  const response = await api.get<GetOrderByIdResponse>(`/orders/track/${encodeURIComponent(orderNumber)}`);
+export type CustomerOrderStatus = Pick<Order, "orderNumber" | "status" | "trackingNumber" | "carrier" | "trackingUrl" | "estimatedDelivery" | "createdAt" | "updatedAt">;
+
+export const getMyOrderStatus = async (id: string): Promise<CustomerOrderStatus> => {
+  const response = await api.get<{ order: CustomerOrderStatus }>(`/orders/${id}/status`);
   return response.data.order;
 };
 
-export const updateOrderStatus = async (
-  id: string,
-  data: {
-    status?: Order["status"];
-    trackingNumber?: string;
-    carrier?: string;
-    estimatedDelivery?: string;
-  }
-): Promise<Order> => {
-  const response = await api.patch<{ message: string; order: Order }>(`/orders/${id}/status`, data);
+export interface TrackableOrder {
+  orderNumber: string;
+  status: Order['status'];
+  trackingNumber?: string;
+  carrier?: string;
+  trackingUrl?: string;
+  estimatedDelivery?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const trackOrder = async (orderNumber: string): Promise<TrackableOrder> => {
+  const response = await api.get<{ order: TrackableOrder }>(`/orders/track/${encodeURIComponent(orderNumber)}`);
   return response.data.order;
+};
+
+
+export const cancelMyOrder = async (id: string): Promise<Order> => {
+  const response = await api.patch<{ message: string; order: Order }>(`/orders/${id}/cancel`);
+  return response.data.order;
+};
+
+export interface CustomerReturnRequest {
+  _id: string;
+  order: string;
+  reason: string;
+  details?: string;
+  status: "requested" | "approved" | "rejected" | "received" | "refunded";
+  adminNote?: string;
+  refundAmount?: number;
+  refundMethod?: "cash" | "bank_transfer";
+  refundReference?: string;
+  returnCarrier?: string;
+  returnTrackingNumber?: string;
+  returnTrackingUrl?: string;
+  returnEstimatedPickup?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const getMyReturnRequest = async (orderId: string): Promise<CustomerReturnRequest | null> => {
+  const response = await api.get<{ returnRequest: CustomerReturnRequest | null }>(`/orders/${orderId}/return`);
+  return response.data.returnRequest;
+};
+
+export const createMyReturnRequest = async (orderId: string, data: { reason: string; details?: string }): Promise<CustomerReturnRequest> => {
+  const response = await api.post<{ returnRequest: CustomerReturnRequest }>(`/orders/${orderId}/return`, data);
+  return response.data.returnRequest;
 };

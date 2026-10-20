@@ -1,18 +1,18 @@
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import {
   LayoutDashboard,
   Users,
   Package,
   Tag,
   ShoppingBag,
+  RotateCcw,
   Ticket,
-  BarChart2,
+  MessageSquare,
   LogOut,
   X,
   Zap,
 } from "lucide-react";
-import { useAuthStore } from "../../store/authStore";
-import { logoutUser } from "../../api/auth";
+import { useLogout } from "../../hooks/useLogout";
 
 const navItems = [
   { to: "/admin", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -20,8 +20,9 @@ const navItems = [
   { to: "/admin/products", label: "Products", icon: Package },
   { to: "/admin/categories", label: "Categories", icon: Tag },
   { to: "/admin/orders", label: "Orders", icon: ShoppingBag },
+  { to: "/admin/returns", label: "Returns & refunds", icon: RotateCcw },
   { to: "/admin/discounts", label: "Discounts", icon: Ticket },
-  { to: "/admin/analytics", label: "Analytics", icon: BarChart2 },
+  { to: "/admin/support", label: "Support", icon: MessageSquare },
 ];
 
 interface AdminSidebarProps {
@@ -29,13 +30,11 @@ interface AdminSidebarProps {
 }
 
 const AdminSidebar = ({ onClose }: AdminSidebarProps) => {
-  const { clearUser } = useAuthStore();
-  const navigate = useNavigate();
+  const logout = useLogout();
 
   const handleLogout = async () => {
-    await logoutUser();
-    clearUser();
-    navigate("/login");
+    onClose?.();
+    await logout();
   };
 
   return (

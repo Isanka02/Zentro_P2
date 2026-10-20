@@ -144,7 +144,7 @@ const AdminDashboard = () => {
           value={formatCurrency(stats.totalRevenue)}
           icon={TrendingUp}
           color="bg-emerald-50 text-emerald-600"
-          sub="All non-cancelled orders"
+          sub="Payments received"
         />
 
         <StatCard
@@ -168,7 +168,7 @@ const AdminDashboard = () => {
           value={stats.totalProducts}
           icon={Package}
           color="bg-purple-50 text-purple-600"
-          sub="Products in catalog"
+          sub="Active products in store"
         />
 
         <StatCard

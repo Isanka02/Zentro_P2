@@ -51,3 +51,6 @@ export const updateProfile = async (data: {
   const res = await api.put<AuthResponse>("/auth/profile", data);
   return res.data.user;
 };
+export const changePassword = async (data: { currentPassword: string; newPassword: string }): Promise<void> => {
+  await api.put("/auth/password", data);
+};

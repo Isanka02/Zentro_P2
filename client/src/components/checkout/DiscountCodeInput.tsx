@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Tag, X } from "lucide-react";
 import { validateDiscountCode } from "../../api/discounts";
 import type { DiscountValidation } from "../../api/discounts";
+import { getErrorMessage } from "../../lib/errorMessage";
 
 interface DiscountCodeInputProps {
   subtotal: number;
@@ -23,8 +24,8 @@ const DiscountCodeInput = ({ subtotal, appliedDiscount, onApply, onRemove }: Dis
       const result = await validateDiscountCode(code.trim(), subtotal);
       onApply(result);
       setCode("");
-    } catch (err: any) {
-      setError(err?.response?.data?.message || "Could not apply this code");
+    } catch (err: unknown) {
+      setError(getErrorMessage(err, "Could not apply this code"));
     } finally {
       setIsChecking(false);
     }

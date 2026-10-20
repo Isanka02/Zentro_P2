@@ -1,13 +1,19 @@
 import { Request, Response } from "express";
 import { Types } from "mongoose";
 import Order from "../models/Order";
-import Product from "../models/Product";
-import Discount from "../models/Discount";
-import { calculateShipping } from "../utils/shipping";
+import { isValidSriLankanDistrict, normalizeSriLankanPhone } from "../utils/shipping";
+import { getBankTransferInstructions } from "../services/bankTransferInstructions";
+import { cancelOrder, OrderCancellationError } from "../services/cancelOrder";
+import { notifyUser } from "../services/notificationService";
+import { OrderPlacementError, placeOrder } from "../services/placeOrder";
+import { isMoneyAmount } from "../utils/money";
+import { CustomerOrderStatusError, getCustomerOrderStatus } from "../services/customerOrderStatus";
 
 interface OrderItemRequest {
   productId: string;
+  variantId?: string;
   quantity: number;
+  expectedPrice: number;
 }
 
 interface ShippingAddressRequest {
@@ -22,14 +28,7 @@ interface ShippingAddressRequest {
   country: string;
 }
 
-const generateOrderNumber = () => {
-  const randomPart = Math.floor(1000 + Math.random() * 9000);
-  return `ZNT-${Date.now()}-${randomPart}`;
-};
-
 export const createOrder = async (req: Request, res: Response) => {
-  const session = await Order.startSession();
-
   try {
     const {
       items,
@@ -41,7 +40,7 @@ export const createOrder = async (req: Request, res: Response) => {
       shippingAddress: ShippingAddressRequest;
       paymentMethod: "cod" | "bank_transfer";
       discountCode?: string;
-    } = req.body;
+    } = req.body ?? {};
 
     // -----------------------------
     // 1. Basic request validation
@@ -49,9 +48,16 @@ export const createOrder = async (req: Request, res: Response) => {
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ message: "Order must contain at least one item" });
     }
+    if (items.length > 50) {
+      return res.status(400).json({ message: "An order cannot contain more than 50 different products" });
+    }
 
     if (!shippingAddress) {
       return res.status(400).json({ message: "Shipping address is required" });
+    }
+
+    if (paymentMethod === "bank_transfer" && !getBankTransferInstructions().configured) {
+      return res.status(400).json({ message: "Bank transfer is temporarily unavailable" });
     }
 
     if (!["cod", "bank_transfer"].includes(paymentMethod)) {
@@ -70,181 +76,128 @@ export const createOrder = async (req: Request, res: Response) => {
       "country",
     ] as const;
 
+    const maxShippingFieldLength: Record<(typeof requiredShippingFields)[number], number> = {
+      fullName: 120,
+      email: 254,
+      phone: 32,
+      address: 300,
+      city: 100,
+      province: 40,
+      district: 60,
+      postalCode: 20,
+      country: 60,
+    };
+
     for (const field of requiredShippingFields) {
-      if (!shippingAddress[field]?.trim()) {
+      const value = shippingAddress[field];
+      if (typeof value !== "string" || !value.trim()) {
         return res.status(400).json({
           message: `${field} is required`,
         });
       }
+      if (value.trim().length > maxShippingFieldLength[field]) {
+        return res.status(400).json({ message: `${field} is too long` });
+      }
     }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(shippingAddress.email.trim())) {
+      return res.status(400).json({ message: "Enter a valid shipping email" });
+    }
+    const normalizedPhone = normalizeSriLankanPhone(shippingAddress.phone);
+    if (!normalizedPhone) {
+      return res.status(400).json({ message: "Enter a valid Sri Lankan phone number" });
+    }
+    if (!/^\d{5}$/.test(shippingAddress.postalCode.trim())) {
+      return res.status(400).json({ message: "Enter the five-digit Sri Lankan postcode" });
+    }
+    if (shippingAddress.country.trim().toLowerCase() !== "sri lanka") {
+      return res.status(400).json({ message: "Zentro currently ships within Sri Lanka" });
+    }
+    if (!isValidSriLankanDistrict(shippingAddress.province, shippingAddress.district)) {
+      return res.status(400).json({ message: "Select a district within the selected province" });
+    }
+    if (discountCode !== undefined && (typeof discountCode !== "string" || discountCode.length > 32)) {
+      return res.status(400).json({ message: "Discount code is invalid" });
+    }
+    const idempotencyKey = req.get("Idempotency-Key");
+    if (!idempotencyKey || !/^[A-Za-z0-9_-]{16,100}$/.test(idempotencyKey)) {
+      return res.status(400).json({ message: "A valid checkout request key is required" });
+    }
+
+    const normalizedShippingAddress: ShippingAddressRequest = {
+      fullName: shippingAddress.fullName.trim(),
+      email: shippingAddress.email.trim().toLowerCase(),
+      phone: normalizedPhone,
+      address: shippingAddress.address.trim(),
+      city: shippingAddress.city.trim(),
+      province: shippingAddress.province.trim(),
+      district: shippingAddress.district.trim(),
+      postalCode: shippingAddress.postalCode.trim(),
+      country: "Sri Lanka",
+    };
 
     // -----------------------------
     // 2. Combine duplicate products
     // -----------------------------
-    const itemMap = new Map<string, number>();
+    const itemMap = new Map<string, { productId: string; variantId?: string; quantity: number; expectedPrice: number }>();
 
     for (const item of items) {
-      if (!Types.ObjectId.isValid(item.productId)) {
+      if (!item || typeof item !== "object") {
+        return res.status(400).json({ message: "Each order item must include a product and quantity" });
+      }
+      if (typeof item.productId !== "string" || !Types.ObjectId.isValid(item.productId)) {
         return res.status(400).json({
           message: "Invalid product ID",
         });
       }
+      if (item.variantId !== undefined && (typeof item.variantId !== "string" || !Types.ObjectId.isValid(item.variantId))) {
+        return res.status(400).json({ message: "Invalid product variant" });
+      }
 
-      if (!Number.isInteger(item.quantity) || item.quantity < 1) {
+      if (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 100) {
         return res.status(400).json({
-          message: "Quantity must be a positive whole number",
+          message: "Quantity must be a whole number between 1 and 100",
         });
       }
+      if (!isMoneyAmount(item.expectedPrice)) {
+        return res.status(400).json({ message: "Each cart item must include its displayed LKR price" });
+      }
 
-      itemMap.set(
-        item.productId,
-        (itemMap.get(item.productId) ?? 0) + item.quantity
-      );
+      const key = `${item.productId}:${item.variantId ?? "default"}`;
+      const existingItem = itemMap.get(key);
+      if (existingItem && Math.round(existingItem.expectedPrice * 100) !== Math.round(item.expectedPrice * 100)) {
+        return res.status(400).json({ message: "The cart contains conflicting prices for the same product" });
+      }
+      const combinedQuantity = (existingItem?.quantity ?? 0) + item.quantity;
+      if (combinedQuantity > 100) {
+        return res.status(400).json({ message: "An order cannot exceed 100 units of a product" });
+      }
+      itemMap.set(key, { productId: item.productId, ...(item.variantId ? { variantId: item.variantId } : {}), quantity: combinedQuantity, expectedPrice: item.expectedPrice });
     }
 
-    // -----------------------------
-    // 3. Start transaction
-    // -----------------------------
-    session.startTransaction();
+    const { order, created } = await placeOrder({
+      itemQuantities: itemMap,
+      shippingAddress: normalizedShippingAddress,
+      paymentMethod,
+      discountCode,
+      userId: req.user?._id,
+      idempotencyKey,
+    });
 
-    const orderItems = [];
-    let subtotal = 0;
-
-    for (const [productId, quantity] of itemMap.entries()) {
-      const product = await Product.findById(productId).session(session);
-
-      if (!product) {
-        throw new Error(`Product not found: ${productId}`);
-      }
-
-      if (product.stock < quantity) {
-        throw new Error(
-          `Not enough stock for "${product.name}". Available stock: ${product.stock}`
-        );
-      }
-
-      // Use the current selling price.
-      // If a product has a discountPrice, use that.
-      const sellingPrice =
-        product.discountPrice !== undefined &&
-        product.discountPrice < product.price
-          ? product.discountPrice
-          : product.price;
-
-      subtotal += sellingPrice * quantity;
-
-      orderItems.push({
-        product: product._id,
-        name: product.name,
-        image: product.images[0] ?? "",
-        price: sellingPrice,
-        quantity,
+    if (created && req.user) {
+      await notifyUser({
+        userId: req.user._id,
+        type: "order",
+        title: "Order placed",
+        message: `Order ${order.orderNumber} has been placed successfully.`,
+        link: `/orders/${order._id}`,
       });
-
-      // Reduce stock
-      product.stock -= quantity;
-      await product.save({ session });
     }
-
-    // -----------------------------
-    // 4. Calculate shipping
-    // -----------------------------
-    const shippingCost = calculateShipping(
-      shippingAddress.province,
-      subtotal
-    );
-
-    // Tax is currently 0 in the checkout implementation.
-    const tax = 0;
-
-    // -----------------------------
-    // 5. Validate discount
-    // -----------------------------
-    let discountAmount = 0;
-    let appliedDiscountCode: string | undefined;
-
-    if (discountCode?.trim()) {
-      const discount = await Discount.findOne({
-        code: discountCode.trim().toUpperCase(),
-      }).session(session);
-
-      if (!discount) {
-        throw new Error("Invalid discount code");
-      }
-
-      if (!discount.isActive) {
-        throw new Error("This discount code is no longer active");
-      }
-
-      if (discount.expiresAt < new Date()) {
-        throw new Error("This discount code has expired");
-      }
-
-      if (discount.usedCount >= discount.maxUses) {
-        throw new Error("This discount code has reached its usage limit");
-      }
-
-      if (subtotal < discount.minPurchase) {
-        throw new Error(
-          `Minimum purchase of LKR ${discount.minPurchase} required for this code`
-        );
-      }
-
-      discountAmount =
-        discount.type === "percentage"
-          ? (subtotal * discount.value) / 100
-          : discount.value;
-
-      discountAmount = Math.min(discountAmount, subtotal);
-
-      appliedDiscountCode = discount.code;
-
-      // Consume one usage only when the order is actually created.
-      discount.usedCount += 1;
-      await discount.save({ session });
-    }
-
-    // -----------------------------
-    // 6. Calculate final total
-    // -----------------------------
-    const total = Math.max(
-      0,
-      subtotal + shippingCost + tax - discountAmount
-    );
-
-    // -----------------------------
-    // 7. Create order
-    // -----------------------------
-    const [order] = await Order.create(
-      [
-        {
-          user: req.user?._id,
-          orderNumber: generateOrderNumber(),
-          items: orderItems,
-          shippingAddress,
-          paymentMethod,
-          isPaid: false,
-          subtotal,
-          shippingCost,
-          tax,
-          discountAmount,
-          discountCode: appliedDiscountCode,
-          total,
-          status: "pending",
-        },
-      ],
-      { session }
-    );
-
-    // -----------------------------
-    // 8. Commit transaction
-    // -----------------------------
-    await session.commitTransaction();
-
     res.status(201).json({
       message: "Order created successfully",
       order: {
         id: order._id,
+        ownerId: order.user?.toString() ?? null,
         orderNumber: order.orderNumber,
         total: order.total,
         status: order.status,
@@ -253,17 +206,11 @@ export const createOrder = async (req: Request, res: Response) => {
       },
     });
   } catch (err) {
-    await session.abortTransaction();
-
-    res.status(400).json({
-      message:
-        err instanceof Error ? err.message : "Failed to create order",
-    });
-  } finally {
-    await session.endSession();
+    if (err instanceof OrderPlacementError) return res.status(err.statusCode).json({ message: err.message });
+    console.error("Order placement error:", err);
+    return res.status(500).json({ message: "Failed to create order" });
   }
 };
-
 export const getMyOrders = async (req: Request, res: Response) => {
   try {
     if (!req.user) {
@@ -274,9 +221,7 @@ export const getMyOrders = async (req: Request, res: Response) => {
 
     return res.json({ orders });
   } catch (err) {
-    return res.status(500).json({
-      message: err instanceof Error ? err.message : "Failed to fetch orders",
-    });
+    return res.status(500).json({ message: "Failed to fetch orders" });
   }
 };
 
@@ -307,84 +252,66 @@ export const getOrderById = async (req: Request, res: Response) => {
 
     return res.json({ order });
   } catch (err) {
-    return res.status(500).json({
-      message: err instanceof Error ? err.message : "Failed to fetch order details",
-    });
+    return res.status(500).json({ message: "Failed to fetch order details" });
+  }
+};
+
+/** Narrow customer-scoped lookup suitable for support tooling and future assistant integrations. */
+export const getMyOrderStatus = async (req: Request, res: Response) => {
+  if (!req.user) return res.status(401).json({ message: "Not authenticated" });
+  try {
+    const order = await getCustomerOrderStatus(req.params.id as string, req.user._id);
+    return res.json({ order });
+  } catch (err) {
+    if (err instanceof CustomerOrderStatusError) {
+      return res.status(err.statusCode).json({ message: err.message });
+    }
+    return res.status(500).json({ message: "Failed to fetch order status" });
   }
 };
 
 export const trackOrder = async (req: Request, res: Response) => {
   try {
-    const orderNumber = (req.params.orderNumber as string)?.trim();
+    const orderNumber = (req.params.orderNumber as string)?.trim().toUpperCase();
 
-    if (!orderNumber) {
-      return res.status(400).json({ message: "Order number is required" });
+    if (!orderNumber || orderNumber.length > 40 || !/^ZNT-[A-Z0-9-]+$/.test(orderNumber)) {
+      return res.status(400).json({ message: "Enter a valid order number" });
     }
 
-    const order = await Order.findOne({
-      orderNumber: { $regex: new RegExp(`^${orderNumber}$`, "i") },
-    });
+    const order = await Order.findOne({ orderNumber });
 
     if (!order) {
       return res.status(404).json({ message: "Order not found" });
     }
 
+    // Public tracking must not expose a customer's address, purchases, or payment details.
     return res.json({
       order: {
-        _id: order._id,
         orderNumber: order.orderNumber,
         status: order.status,
         trackingNumber: order.trackingNumber,
         carrier: order.carrier,
+        trackingUrl: order.trackingUrl,
         estimatedDelivery: order.estimatedDelivery,
-        shippingAddress: order.shippingAddress,
-        items: order.items,
-        total: order.total,
-        subtotal: order.subtotal,
-        shippingCost: order.shippingCost,
-        discountAmount: order.discountAmount,
-        paymentMethod: order.paymentMethod,
         createdAt: order.createdAt,
         updatedAt: order.updatedAt,
       },
     });
   } catch (err) {
-    return res.status(500).json({
-      message: err instanceof Error ? err.message : "Failed to track order",
-    });
+    return res.status(500).json({ message: "Failed to track order" });
   }
 };
+export const cancelMyOrder = async (req: Request, res: Response) => {
+  if (!req.user) return res.status(401).json({ message: "Not authenticated" });
 
-export const updateOrderStatus = async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
-    const { status, trackingNumber, carrier, estimatedDelivery } = req.body;
-
-    if (!id || !Types.ObjectId.isValid(id)) {
-      return res.status(400).json({ message: "Invalid order ID" });
-    }
-
-    const validStatuses = ["pending", "confirmed", "shipped", "delivered", "cancelled"];
-    if (status && !validStatuses.includes(status)) {
-      return res.status(400).json({ message: "Invalid status value" });
-    }
-
-    const order = await Order.findById(id);
-    if (!order) {
-      return res.status(404).json({ message: "Order not found" });
-    }
-
-    if (status) order.status = status;
-    if (trackingNumber !== undefined) order.trackingNumber = trackingNumber;
-    if (carrier !== undefined) order.carrier = carrier;
-    if (estimatedDelivery !== undefined) order.estimatedDelivery = estimatedDelivery ? new Date(estimatedDelivery) : undefined;
-
-    await order.save();
-
-    return res.json({ message: "Order status updated successfully", order });
+    const order = await cancelOrder(id, req.user._id);
+    return res.json({ message: "Order cancelled successfully", order });
   } catch (err) {
-    return res.status(500).json({
-      message: err instanceof Error ? err.message : "Failed to update order status",
-    });
+    if (err instanceof OrderCancellationError) {
+      return res.status(err.statusCode).json({ message: err.message });
+    }
+    return res.status(500).json({ message: "Failed to cancel order" });
   }
 };

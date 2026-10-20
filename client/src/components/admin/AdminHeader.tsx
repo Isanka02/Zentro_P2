@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Menu, Bell, ExternalLink } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useAuthStore } from "../../store/authStore";
+import { useNotificationStore } from "../../store/notificationStore";
 
 interface AdminHeaderProps {
   onMobileMenuOpen: () => void;
@@ -10,6 +11,7 @@ interface AdminHeaderProps {
 
 const AdminHeader = ({ onMobileMenuOpen, pageTitle }: AdminHeaderProps) => {
   const { user } = useAuthStore();
+  const unreadCount = useNotificationStore((state) => state.unreadCount);
   const [showDropdown, setShowDropdown] = useState(false);
 
   return (
@@ -38,10 +40,18 @@ const AdminHeader = ({ onMobileMenuOpen, pageTitle }: AdminHeaderProps) => {
           View Store
         </Link>
 
-        {/* Notifications bell placeholder */}
-        <button className="relative p-2 text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition">
+        <Link
+          to="/admin/notifications"
+          aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}
+          className="relative p-2 text-gray-500 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition"
+        >
           <Bell size={20} />
-        </button>
+          {unreadCount > 0 && (
+            <span className="absolute -right-0.5 -top-0.5 min-w-4 rounded-full bg-red-600 px-1 text-center text-[10px] font-semibold leading-4 text-white">
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
+        </Link>
 
         {/* Admin avatar */}
         <div className="relative">

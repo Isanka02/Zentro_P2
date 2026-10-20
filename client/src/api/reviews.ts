@@ -12,12 +12,15 @@ export interface Review {
   user: ReviewUser;
   rating: number;
   comment: string;
+  verifiedPurchase: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
 export interface GetProductReviewsResponse {
   reviews: Review[];
+  hasReviewed: boolean;
+  pagination: { page: number; limit: number; total: number; totalPages: number };
 }
 
 export interface CreateReviewResponse {
@@ -25,9 +28,9 @@ export interface CreateReviewResponse {
   review: Review;
 }
 
-export const getProductReviews = async (productId: string): Promise<Review[]> => {
-  const response = await api.get<GetProductReviewsResponse>(`/products/${productId}/reviews`);
-  return response.data.reviews;
+export const getProductReviews = async (productId: string, page: number): Promise<GetProductReviewsResponse> => {
+  const response = await api.get<GetProductReviewsResponse>(`/products/${productId}/reviews`, { params: { page } });
+  return response.data;
 };
 
 export const createReview = async (

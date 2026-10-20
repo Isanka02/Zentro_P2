@@ -1,50 +1,37 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useParams, useNavigate } from "react-router-dom";
-import { Search, Package, MapPin, AlertCircle, ShoppingBag } from "lucide-react";
-import { trackOrder, type Order } from "../api/orders";
+import { Search, Package, AlertCircle, ShoppingBag } from "lucide-react";
+import { trackOrder, type TrackableOrder } from "../api/orders";
 import TrackingTimeline from "../components/orders/TrackingTimeline";
+import { getErrorMessage } from "../lib/errorMessage";
 
 const OrderTracking = () => {
   const { orderNumber: urlOrderNumber } = useParams<{ orderNumber?: string }>();
+  return <OrderTrackingView key={urlOrderNumber ?? "manual-search"} routeOrderNumber={urlOrderNumber ?? ""} />;
+};
+
+const OrderTrackingView = ({ routeOrderNumber }: { routeOrderNumber: string }) => {
   const navigate = useNavigate();
 
-  const [searchInput, setSearchInput] = useState(urlOrderNumber || "");
-  const [order, setOrder] = useState<Order | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [searched, setSearched] = useState(false);
-
-  const handleTrack = async (num: string) => {
-    const trimmed = num.trim();
-    if (!trimmed) return;
-
-    setLoading(true);
-    setError("");
-    setSearched(true);
-
-    try {
-      const data = await trackOrder(trimmed);
-      setOrder(data);
-    } catch (err: any) {
-      setOrder(null);
-      setError(err?.response?.data?.message || `No order found with number "${trimmed}".`);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (urlOrderNumber) {
-      setSearchInput(urlOrderNumber);
-      handleTrack(urlOrderNumber);
-    }
-  }, [urlOrderNumber]);
+  const [searchInput, setSearchInput] = useState(routeOrderNumber);
+  const orderQuery = useQuery({
+    queryKey: ["order-tracking", routeOrderNumber],
+    queryFn: () => trackOrder(routeOrderNumber),
+    enabled: Boolean(routeOrderNumber),
+    retry: false,
+  });
+  const order = orderQuery.data as TrackableOrder | undefined;
+  const loading = orderQuery.isFetching;
+  const searched = Boolean(routeOrderNumber);
+  const error = orderQuery.isError
+    ? getErrorMessage(orderQuery.error, `No order found with number "${routeOrderNumber}".`)
+    : "";
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (searchInput.trim()) {
       navigate(`/track/${encodeURIComponent(searchInput.trim())}`);
-      handleTrack(searchInput.trim());
     }
   };
 
@@ -115,74 +102,16 @@ const OrderTracking = () => {
             updatedAt={order.updatedAt}
           />
 
-          {/* Shipping & Delivery Summary */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-3 shadow-xs">
-              <div className="flex items-center gap-2 font-semibold text-gray-900 text-sm border-b border-gray-100 pb-3">
-                <MapPin size={18} className="text-blue-600" />
-                Delivery Destination
-              </div>
-              <div className="text-xs text-gray-600 space-y-1">
-                <p className="font-semibold text-gray-900 text-sm">{order.shippingAddress.fullName}</p>
-                <p>{order.shippingAddress.address}</p>
-                <p>
-                  {order.shippingAddress.city}, {order.shippingAddress.district}
-                </p>
-                <p>
-                  {order.shippingAddress.province}, {order.shippingAddress.postalCode}
-                </p>
-              </div>
-            </div>
+          {order.trackingUrl && <a href={order.trackingUrl} target="_blank" rel="noopener noreferrer" className="inline-flex rounded-lg border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 hover:bg-blue-100">Open courier tracking page</a>}
 
-            <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-3 shadow-xs">
-              <div className="flex items-center gap-2 font-semibold text-gray-900 text-sm border-b border-gray-100 pb-3">
-                <Package size={18} className="text-blue-600" />
-                Package Summary
-              </div>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between text-gray-600">
-                  <span>Items Count</span>
-                  <span className="font-semibold text-gray-900">{order.items.length} item(s)</span>
-                </div>
-                <div className="flex justify-between text-gray-600">
-                  <span>Payment Method</span>
-                  <span className="capitalize font-medium text-gray-900">{order.paymentMethod.replace("_", " ")}</span>
-                </div>
-                <div className="flex justify-between text-gray-600 pt-2 border-t border-gray-100">
-                  <span className="font-bold text-gray-900 text-sm">Total Paid</span>
-                  <span className="font-bold text-blue-600 text-sm">LKR {order.total.toLocaleString()}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Items Preview */}
-          <div className="bg-white border border-gray-200 rounded-xl p-6 space-y-4 shadow-xs">
-            <h3 className="font-semibold text-gray-900 text-sm">Items in this Package</h3>
-            <div className="divide-y divide-gray-100">
-              {order.items.map((item, idx) => (
-                <div key={idx} className="py-3 flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <img
-                      src={item.image || "https://placehold.co/100x100?text=Product"}
-                      alt={item.name}
-                      className="w-12 h-12 object-cover rounded-lg border border-gray-200"
-                    />
-                    <div>
-                      <p className="text-xs font-semibold text-gray-900">{item.name}</p>
-                      <p className="text-[11px] text-gray-500">Qty: {item.quantity}</p>
-                    </div>
-                  </div>
-                  <span className="text-xs font-semibold text-gray-900">
-                    LKR {(item.price * item.quantity).toLocaleString()}
-                  </span>
-                </div>
-              ))}
-            </div>
+          <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-xs">
+            <h2 className="font-semibold text-gray-900">Order {order.orderNumber}</h2>
+            <p className="mt-2 text-sm text-gray-600">
+              Status: <span className="font-medium capitalize">{order.status}</span>
+            </p>
           </div>
         </div>
       )}
-
       {/* Initial Empty Search Prompt */}
       {!loading && !searched && (
         <div className="bg-white border border-gray-200 rounded-2xl p-12 text-center space-y-3 max-w-lg mx-auto">
